@@ -26,6 +26,11 @@ export default function CloverConnect() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // When no sign-in is open, still refresh every few seconds (waiting estimates, history).
+  useEffect(() => {
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, [load]);
 
   const live = current && (current.status === "requested" || current.status === "active");
 

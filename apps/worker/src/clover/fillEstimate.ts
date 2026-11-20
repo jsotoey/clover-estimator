@@ -196,20 +196,113 @@ async function selectOrCreateCustomer(page: Page, e: Estimate) {
   }
   if (!e.customer.email) throw new FillError("Clover needs an email to create a new customer");
   await (await must([page.getByLabel(/^email/i)], "the customer email field")).fill(e.customer.email);
+  let phoneField: Locator | null = null;
   if (e.customer.phone) {
-    const phone = await firstVisible([page.getByLabel(/phone/i)], 1500);
-    if (phone) await phone.pressSequentially(e.customer.phone.replace(/\D/g, ""), { delay: 20 });
+    phoneField = await firstVisible([page.getByLabel(/phone/i)], 1500);
+    if (phoneField) await phoneField.pressSequentially(e.customer.phone.replace(/\D/g, ""), { delay: 20 });
+    // Clover's text-message consent box. Only ticked when the owner chose to send by text.
+    if (phoneField && (e.delivery === "sms" || e.delivery === "both")) {
+      const consent = await firstVisible([page.getByRole("checkbox", { name: /text messages|consent/i }), page.getByLabel(/text messages|consent/i)], 1500);
+      if (consent && !(await consent.isChecked().catch(() => true))) await consent.check().catch(() => {});
+    }
   }
-  if (e.customer.job_address) {
-    const addr = await firstVisible([page.getByLabel(/^address$/i)], 1500);
-    if (addr) await addr.fill(e.customer.job_address);
-  }
+  const addressFields = e.customer.job_address ? await fillAddress(page, e.customer.job_address) : [];
+
   const save = await must([
     page.getByRole("button", { name: /^(save|add|add customer|create)$/i }),
     page.getByRole("button", { name: /save customer|add customer/i }),
   ], "the save-customer button");
+
+  // If Clover still won't allow Save, drop optional details one at a time (address, then phone).
+  if (!(await enabledSoon(save)) && addressFields.length) {
+    for (const f of addressFields) await f.fill("").catch(() => {});
+    await logNote(page, "address left off the Clover customer (Clover would not accept it)");
+  }
+  if (!(await enabledSoon(save)) && phoneField) {
+    await phoneField.fill("").catch(() => {});
+    await logNote(page, "phone left off the Clover customer (Clover would not accept it without text consent)");
+  }
+  if (!(await enabledSoon(save))) throw new FillError("Clover won't let us save the new customer. Check the screenshot for the missing field.");
   await save.click();
   await page.waitForTimeout(1500);
+}
+
+async function enabledSoon(btn: Locator, ms = 1500): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (await btn.isEnabled().catch(() => false)) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
+
+async function logNote(_page: Page, note: string) {
+  console.log(`[note] ${note}`);
+}
+
+const US_STATES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
+  NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", PR: "Puerto Rico",
+};
+
+/** "14 Park St, Montclair, NJ 07042" -> parts. Returns null when it doesn't look like a US address. */
+export function parseUsAddress(raw: string): { street: string; city: string; stateCode: string; zip?: string } | null {
+  const s = raw.replace(/\s+/g, " ").replace(/,?\s*(USA|United States)$/i, "").trim();
+  const names = Object.entries(US_STATES);
+  const m = s.match(/^(.+?),\s*([^,]+?),?\s+([A-Za-z]{2}|[A-Za-z][A-Za-z ]+?)\.?\s*(\d{5}(?:-\d{4})?)?$/);
+  if (!m) return null;
+  const st = m[3].trim();
+  const code = st.length === 2 ? st.toUpperCase() : names.find(([, n]) => n.toLowerCase() === st.toLowerCase())?.[0];
+  if (!code || !US_STATES[code]) return null;
+  return { street: m[1].trim(), city: m[2].trim(), stateCode: code, zip: m[4] };
+}
+
+/** Clover's customer form splits the address: Address, Country, State / Province, Zip, City. */
+async function fillAddress(page: Page, raw: string): Promise<Locator[]> {
+  const filled: Locator[] = [];
+  const addr = await firstVisible([page.getByLabel(/^address( line 1)?$/i), page.getByLabel(/^street/i)], 1500);
+  if (!addr) return filled;
+  const p = parseUsAddress(raw);
+  await addr.fill(p ? p.street : raw);
+  filled.push(addr);
+  if (!p) return filled;
+  await page.waitForTimeout(600); // let any address suggestions settle; we fill the parts ourselves
+  await chooseValue(page, /^country/i, ["United States", "United States of America", "USA", "US"]);
+  await chooseValue(page, /state|province/i, [US_STATES[p.stateCode], p.stateCode]);
+  for (const [label, value] of [[/zip|postal/i, p.zip], [/city|town/i, p.city]] as const) {
+    if (!value) continue;
+    const f = await firstVisible([page.getByLabel(label)], 1000);
+    if (f) { await f.fill(value); filled.push(f); }
+  }
+  return filled;
+}
+
+/** Fill a field that may be a dropdown (select), a searchable list, or plain text. */
+async function chooseValue(page: Page, label: RegExp, values: string[]) {
+  const f = await firstVisible([page.getByLabel(label), page.getByRole("combobox", { name: label })], 1000);
+  if (!f) return;
+  const tag = await f.evaluate((el) => (el as HTMLElement).tagName.toLowerCase()).catch(() => "");
+  if (tag === "select") {
+    for (const v of values) if (await f.selectOption({ label: v }).then(() => true).catch(() => false)) return;
+    return;
+  }
+  for (const v of values) {
+    await f.click().catch(() => {});
+    await f.fill(v).catch(() => {});
+    await page.waitForTimeout(500);
+    const opt = page.getByRole("option", { name: new RegExp(`^${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).first();
+    if (await opt.isVisible().catch(() => false)) { await opt.click(); return; }
+    if (tag === "input" && (await f.inputValue().catch(() => "")) === v) {
+      const list = page.getByRole("listbox");
+      if (!(await list.isVisible().catch(() => false))) return; // plain text box: typed value stands
+    }
+  }
 }
 
 async function setDate(page: Page, label: RegExp, iso: string, required: boolean) {
