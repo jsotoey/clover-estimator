@@ -90,6 +90,8 @@ const money = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFrac
 function InvoiceRow({ id, inv, accepted, phone, name }: { id: string; inv: InvoiceInfo; accepted: boolean; phone?: string; name?: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [seen, setSeen] = useState(inv.status);
+  if (seen !== inv.status) { setSeen(inv.status); setMsg(""); } // status moved on: drop the tap message
   const title = inv.kind === "deposit" ? "Deposit invoice" : "Balance invoice";
   async function act(action: "send" | "in_person") {
     if (action === "in_person" && !confirm(`Mark the ${money(inv.totalCents)} ${inv.kind} as collected in person on your Clover? No invoice will be sent.`)) return;

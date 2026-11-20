@@ -528,6 +528,8 @@ export async function fillInvoice(
     await opts.onStep?.(name, url);
   };
 
+  // Count matching invoices first, so after Send we can tell a new one appeared (deposit and balance can look alike).
+  const before = opts.dryRun ? 0 : await countListedInvoices(page, estimate.customer.name, inv.totalCents);
   await page.goto(`${config.cloverBaseUrl}/invoice-manager/create`, { waitUntil: "domcontentloaded", timeout: T.nav });
   await page.waitForLoadState("networkidle").catch(() => {});
   await must([page.getByRole("combobox", { name: /select customer/i }), page.getByLabel(/select customer/i)], "the invoice form", 15_000);
@@ -561,13 +563,41 @@ export async function fillInvoice(
   const send = await must([page.getByRole("button", { name: /^send$/i })], 'the invoice "Send" button');
   await send.click();
   await page.waitForLoadState("networkidle").catch(() => {});
-  await page.waitForTimeout(2500);
+  // Clover's signals after Send vary: leave the review page, a success message, a share link, or Send going away.
+  let payLink: string | undefined;
+  let confirmed = false;
+  for (let i = 0; i < 15 && !confirmed; i++) {
+    await page.waitForTimeout(1000);
+    payLink = payLink ?? (await findPayLink(page));
+    confirmed =
+      !/\/invoice-manager\/review/.test(page.url()) ||
+      (await page.getByText(/invoice (sent|emailed|created)|successfully/i).first().isVisible().catch(() => false)) ||
+      !!payLink ||
+      !(await send.isVisible().catch(() => false));
+  }
   await step("04-sent");
-  const payLink = await findPayLink(page);
-  const leftReview = !/\/invoice-manager\/review/.test(page.url());
-  const said = await page.getByText(/invoice (sent|emailed|created).*success|successfully/i).first().isVisible().catch(() => false);
-  if (!leftReview && !said && !payLink) throw new FillError("Clicked Send on the invoice, but Clover did not confirm it. Check Clover's Invoices page before retrying.");
+  if (!confirmed) {
+    // Last word: Clover's own Invoices list.
+    const after = await countListedInvoices(page, estimate.customer.name, inv.totalCents);
+    confirmed = after > before;
+  }
+  if (!confirmed) throw new FillError("Clicked Send on the invoice, but couldn't confirm it in Clover. Check Clover's Invoices page before retrying.");
   return { sent: true, cloverTotalCents: cloverTotal, payLink };
+}
+
+/** How many invoices in Clover's list are for this customer and amount. */
+async function countListedInvoices(page: Page, customerName: string, totalCents: number): Promise<number> {
+  try {
+    await page.goto(`${config.cloverBaseUrl}/invoice-manager`, { waitUntil: "domcontentloaded", timeout: T.nav });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.getByRole("row").nth(1).waitFor({ timeout: 10_000 }).catch(() => {});
+    const amount = formatCents(totalCents);
+    const first = customerName.trim().split(/\s+/)[0].toLowerCase();
+    const rows = await page.getByRole("row").allInnerTexts();
+    return rows.filter((r) => r.includes(amount) && r.toLowerCase().includes(first)).length;
+  } catch {
+    return 0;
+  }
 }
 
 /** After sending, Clover may show the invoice link (shared-link option). Grab it if it's on screen. */
