@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Estimate, PricingResult } from "@ce/core";
 import { CLOVER_LIMITS } from "@ce/core";
 import ReviewCard from "./ReviewCard";
+import AppHeader from "./AppHeader";
 import StatusBanner, { type StatusData } from "./StatusBanner";
 import { toCloverJpeg } from "@/lib/photos";
 
@@ -48,6 +49,14 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
     }, watching ? 8000 : 3000);
     return () => clearInterval(t);
   }, [estimateId, status]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(location.search).get("recent")) {
+      history.replaceState(null, "", "/");
+      void showRecent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function showRecent() {
     const r = await fetch("/api/estimates", { cache: "no-store" });
@@ -159,22 +168,12 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
 
   return (
     <main className="mx-auto flex h-dvh max-w-md flex-col">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
-        <h1 className="text-lg font-semibold">{estimateId && status ? "Estimate" : "New estimate"}</h1>
-        <div className="flex gap-4">
-          <button onClick={showRecent} className="text-sm font-medium text-neutral-600">Recent</button>
-          <a href="/clover" className="text-sm font-medium text-neutral-600">Clover</a>
-          <button onClick={startOver} className="text-sm font-medium text-green-800">+ New</button>
-        </div>
-      </header>
+      <AppHeader active={recent ? "recent" : "estimate"} onRecent={() => (recent ? setRecent(null) : showRecent())} onNew={() => { setRecent(null); startOver(); }} />
 
       {recent && (
-        <div className="fixed inset-0 z-20 flex flex-col bg-neutral-50">
-          <div className="mx-auto flex w-full max-w-md items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
-            <h2 className="text-lg font-semibold">Recent estimates</h2>
-            <button onClick={() => setRecent(null)} className="text-sm font-medium text-green-800">Close</button>
-          </div>
+        <div className="fixed inset-x-0 bottom-0 top-[53px] z-20 flex flex-col bg-neutral-50">
           <div className="mx-auto w-full max-w-md flex-1 overflow-y-auto p-4">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Recent estimates</h2>
             {recent.length === 0 && <p className="text-neutral-500">None yet.</p>}
             {recent.map((r) => (
               <button key={r.id} onClick={() => openEstimate(r.id)}

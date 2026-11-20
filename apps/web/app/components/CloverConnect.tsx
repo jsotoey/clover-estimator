@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import AppHeader from "./AppHeader";
 
 type Login = { id: number; status: string; reason: string | null; message: string | null; typing?: boolean; created_at: string; finished_at: string | null };
 type Hist = { id: number; status: string; reason: string | null; created_at: string; finished_at: string | null; seconds: number | null };
@@ -99,11 +100,10 @@ export default function CloverConnect() {
   const lastDone = history.find((h) => h.status === "done");
 
   return (
+    <>
+    <div className="mx-auto max-w-md"><AppHeader active="clover" /></div>
     <main className="mx-auto max-w-md p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Connect Clover</h1>
-        <a href="/" className="text-sm font-medium text-green-800">← Estimates</a>
-      </div>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Clover connection</h2>
 
       {!live && (
         <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
@@ -191,5 +191,6 @@ export default function CloverConnect() {
         )}
       </section>
     </main>
+    </>
   );
 }
