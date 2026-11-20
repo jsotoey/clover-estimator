@@ -18,11 +18,16 @@ async function releaseWaitingEstimates() {
 }
 
 /** Handle a pending "Connect Clover" request, if any. Returns true if one ran. */
+let signedIn = true; // until a check says otherwise
+
 async function handleLoginRequest(): Promise<boolean> {
   const loginId = await claimLoginRequest();
   if (!loginId) return false;
   const ok = await runLiveLogin(loginId);
-  if (ok) await releaseWaitingEstimates();
+  if (ok) {
+    signedIn = true;
+    await releaseWaitingEstimates();
+  }
   return true;
 }
 
@@ -107,11 +112,13 @@ async function main() {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
       // While idle, visit Clover every 30 minutes so the session stays fresh, and save it.
-      if (Date.now() - lastKeepAlive > 30 * 60 * 1000) {
+      // Only while signed in: when signed out, don't keep loading Clover's login page (it only adds suspicion).
+      if (signedIn && Date.now() - lastKeepAlive > 30 * 60 * 1000) {
         lastKeepAlive = Date.now();
         const page = await newPage();
         try {
           const ok = await checkSession(page);
+          signedIn = ok;
           if (ok) await saveSession();
           await logEvent(null, "keepalive", { signedIn: ok });
         } finally {
