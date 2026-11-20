@@ -8,7 +8,7 @@ Only Jon can do these, from his phone (no laptop needed). Claude Code cannot cre
 - [ ] Anthropic Console: create an API key and add credit.
 - [ ] Railway: new project → add **Postgres** → copy its public `DATABASE_URL`.
 - [ ] Vercel: Storage → create a **Blob** store → copy `BLOB_READ_WRITE_TOKEN`.
-- [ ] Bot login: create a new Gmail just for the app (e.g. `mjpainting.estimates@gmail.com`), then have M&J's owner add it as a new **employee** on their Clover account, with access to estimates. This becomes `CLOVER_EMAIL` / `CLOVER_PASSWORD`.
+- [ ] Clover login: for testing, use one of Jon's own emails added as an employee on M&J's Clover account (with access to estimates). Swap to a dedicated bot login later by changing `CLOVER_EMAIL` / `CLOVER_PASSWORD` in Railway; the worker resets its saved session automatically.
 - [ ] After milestones 1–2 are merged: Vercel → import repo, root `apps/web`, add the web env vars. Railway → new service from the repo, root `apps/worker`, volume at `/data`, add the worker env vars, `RECON=true`.
 
 Claude Code: do the milestones below. In the README, write the deploy steps above as tap-by-tap instructions Jon can follow on his phone.
@@ -56,6 +56,7 @@ A mobile-first web app for a field-service merchant (first user: M&J Painting an
 ## The worker (apps/worker)
 - Loop: every 5 s, claim one `approved` estimate → `sending`.
 - Browser: Playwright **persistent context** at `/data/clover-profile` so the login and the trusted device survive restarts.
+- **The login must be swappable.** For testing, Jon is using one of his own emails; it will be replaced by a dedicated bot login later. Nothing may hard-code it: it comes only from `CLOVER_EMAIL` / `CLOVER_PASSWORD`. The worker stores the email it last logged in with in `/data/last-login.txt`; if the env email differs on startup, it wipes `/data/clover-profile` and logs in fresh. Changing the login = edit two env vars in Railway + redeploy. Document this in the README.
 - **Login:** if signed out, sign in with `CLOVER_EMAIL` / `CLOVER_PASSWORD` (a dedicated employee login the merchant created for this app). If Clover asks for a verification code: set `needs_code`, wait up to 10 min for a row in `verification_codes`, enter it, continue. Timeout → `failed`.
 - **Fill the estimate.** Prefer `getByRole` / `getByLabel` / text selectors over CSS. Fields, as seen in the dashboard: customer (search existing by phone/email, else create), service date, expiration date, payment due, line items (custom items: description + price), the ONE tax rate (and confirm no second tax is applied), the note (≤ 200 chars), up to 3 attachments, and delivery (email/SMS).
 - **Safety check before sending:** read the total Clover shows and compare it to `computed.total`. Mismatch of more than $0.01 → do NOT send; set `failed` with both numbers and a screenshot.
