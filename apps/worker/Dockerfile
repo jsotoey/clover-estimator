@@ -1,7 +1,7 @@
 # Build context: repo root (see /railway.json). Browser version must match the playwright npm version.
 FROM mcr.microsoft.com/playwright:v1.65.1-noble
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@10.28.0
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY apps/worker/package.json apps/worker/
