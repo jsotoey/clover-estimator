@@ -58,7 +58,7 @@ export function getContext(): Promise<BrowserContext> {
         headless: config.headless,
         executablePath: process.env.CHROME_PATH || undefined,
         viewport: VIEWPORT,
-        deviceScaleFactor: 2, // sharp sign-in pictures on a phone; other screenshots use scale "css"
+        // Keep the default 1x scale: at 2x, Google's robot-check frame renders at half size in screenshots.
         locale: "en-US",
         timezoneId: "America/New_York",
       })

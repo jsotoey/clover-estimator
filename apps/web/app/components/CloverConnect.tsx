@@ -133,12 +133,7 @@ export default function CloverConnect() {
               aria-label="Type into Clover" inputMode="text" autoComplete="one-time-code"
               autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
               className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0" style={{ fontSize: 16 }} />
-            {current?.typing && !typing && (
-              <button onClick={openKeyboard}
-                className="absolute inset-x-4 bottom-4 rounded-xl bg-green-800 py-3 text-base font-semibold text-white shadow-lg">
-                Tap to type (keyboard)
-              </button>
-            )}
+
           </div>
           <div className="mt-2 grid grid-cols-4 gap-2 text-sm">
             {["Keyboard", "Enter", "Backspace", "Cancel"].map((k) => (
@@ -146,10 +141,10 @@ export default function CloverConnect() {
                 if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
                 if (k === "Keyboard") { openKeyboard(); return; }
                 enqueue({ kind: "key", text: k });
-              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k === "Keyboard" ? "⌨ Type" : k}</button>
+              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : k === "Keyboard" && current?.typing && !typing ? "animate-pulse border-green-800 bg-green-800 font-semibold text-white" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k === "Keyboard" ? "⌨ Type" : k}</button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-neutral-500">Tap the picture to click. When you tap a box to type in (like the code boxes), a Type button appears. On iPhone the texted code shows above the keyboard; tap it.</p>
+          <p className="mt-2 text-xs text-neutral-500">Tap the picture to click. When you tap a box to type in (like the code boxes), the Type button turns green: tap it for your keyboard. On iPhone the texted code shows above the keyboard; tap it.</p>
         </div>
       )}
 

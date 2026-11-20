@@ -158,7 +158,7 @@ export async function runLiveLogin(id: number): Promise<boolean> {
       await applyInputs(page, id);
       if (!remembered) remembered = await rememberBrowser(page);
       clip = await focusArea(page);
-      const shot = await page.screenshot({ type: "jpeg", quality: 60, scale: "device", clip });
+      const shot = await page.screenshot({ type: "jpeg", quality: 80, clip });
       await setLogin(id, { frame: shot });
       await setTyping(id, await textBoxFocused(page));
       // Signed in only once Clover shows a dashboard page (a code/verification step is NOT done yet).
