@@ -71,6 +71,10 @@ async function main() {
     await logEvent(null, "login_changed", { note: "CLOVER_EMAIL changed; saved Clover session cleared" });
   }
   console.log(`worker starting: dryRun=${config.dryRun} recon=${config.recon} headless=${config.headless}`);
+  // A sign-in that was open when the worker restarted can't continue; let the merchant start a fresh one.
+  await db().query(
+    `UPDATE clover_login SET status = 'failed', message = 'Interrupted by an app update. Tap Sign in to Clover again.', frame = NULL, finished_at = now(), updated_at = now() WHERE status = 'active'`
+  ).catch(() => {});
 
   if (config.recon) {
     // Scouting run: needs a signed-in session first (sign in from the app's Connect Clover screen).

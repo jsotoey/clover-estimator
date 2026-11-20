@@ -19,6 +19,7 @@ export function getContext(): Promise<BrowserContext> {
         headless: config.headless,
         executablePath: process.env.CHROME_PATH || undefined,
         viewport: VIEWPORT,
+        deviceScaleFactor: 2, // sharp sign-in pictures on a phone; other screenshots use scale "css"
         locale: "en-US",
         timezoneId: "America/New_York",
       })
@@ -44,7 +45,7 @@ export async function newPage(): Promise<Page> {
 
 /** Screenshot + optional HTML + ARIA snapshot of the current page. Returns the screenshot URL. */
 export async function capture(page: Page, label: string, opts: { html?: boolean; aria?: boolean } = {}): Promise<string> {
-  const shot = await page.screenshot({ fullPage: true });
+  const shot = await page.screenshot({ fullPage: true, scale: "css" });
   const url = await saveArtifact(`${label}.png`, shot, "image/png");
   if (opts.html) await saveArtifact(`${label}.html`, await page.content(), "text/html");
   if (opts.aria) {

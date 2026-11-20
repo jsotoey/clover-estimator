@@ -40,7 +40,7 @@ export default function CloverConnect() {
           setFrameUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); });
         }
       }
-    }, 800);
+    }, 500);
     return () => clearInterval(t);
   }, [live, current?.status, load]);
 
@@ -53,14 +53,36 @@ export default function CloverConnect() {
   async function send(body: object) {
     await fetch("/api/clover-login/input", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   }
+  // Keep taps and keystrokes in order.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = (body: object) => { queue.current = queue.current.then(() => send(body)).catch(() => {}); };
+  const keysRef = useRef<HTMLInputElement>(null);
+  const prev = useRef("");
+
   function tap(e: React.MouseEvent<HTMLImageElement>) {
     const r = e.currentTarget.getBoundingClientRect();
-    send({ kind: "click", x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
-  }
-  async function sendText() {
-    if (!text) return;
-    await send({ kind: "type", text });
+    enqueue({ kind: "click", x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+    // Open the phone keyboard right away; whatever is typed goes straight into Clover.
+    prev.current = "";
     setText("");
+    keysRef.current?.focus({ preventScroll: true });
+  }
+  function onType(v: string) {
+    const p = prev.current;
+    if (v.startsWith(p)) {
+      if (v.length > p.length) enqueue({ kind: "type", text: v.slice(p.length) });
+    } else {
+      const common = [...p].findIndex((c, i) => v[i] !== c);
+      const keep = common === -1 ? p.length : common;
+      for (let i = 0; i < p.length - keep; i++) enqueue({ kind: "key", text: "Backspace" });
+      if (v.length > keep) enqueue({ kind: "type", text: v.slice(keep) });
+    }
+    prev.current = v;
+    setText(v);
+  }
+  function onKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") { e.preventDefault(); enqueue({ kind: "key", text: "Enter" }); prev.current = ""; setText(""); }
+    else if (e.key === "Backspace" && text === "") enqueue({ kind: "key", text: "Backspace" });
   }
 
   const lastDone = history.find((h) => h.status === "done");
@@ -88,27 +110,31 @@ export default function CloverConnect() {
       )}
 
       {live && (
-        <div className="mt-4 space-y-3">
-          <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">
-            {current?.status === "requested" ? "Opening Clover… (a few seconds)" : current?.message ?? "Tap the picture to click. Use the box to type."}
+        <div className="mt-3">
+          <p className="text-sm text-blue-900">
+            {current?.status === "requested" ? "Opening Clover… (a few seconds)" : current?.message ?? "Tap the picture to click."}
           </p>
+          <p className="mt-1 text-xs text-neutral-500">Tap anything in the picture. Your keyboard opens and types straight into Clover.</p>
           {frameUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="w-full cursor-pointer rounded-lg border border-neutral-300" />
+            <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="-mx-4 mt-2 block w-[calc(100%+2rem)] max-w-none cursor-pointer border-y border-neutral-300" />
           ) : (
-            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-neutral-300 text-neutral-400">Loading picture…</div>
+            <div className="-mx-4 mt-2 flex h-96 items-center justify-center border-y border-dashed border-neutral-300 text-neutral-400">Loading Clover…</div>
           )}
-          <div className="flex gap-2">
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type here (e.g. the code)" inputMode="text" autoComplete="one-time-code"
-              className="min-w-0 flex-1 rounded-xl border border-neutral-300 px-3 py-3 text-base" />
-            <button onClick={sendText} className="rounded-xl bg-green-800 px-4 font-semibold text-white">Type</button>
+          <div className="sticky bottom-0 -mx-4 mt-2 space-y-2 bg-neutral-50/95 px-4 py-2 backdrop-blur">
+            <input ref={keysRef} value={text} onChange={(e) => onType(e.target.value)} onKeyDown={onKey}
+              placeholder="Keyboard → Clover (tap the picture first)" inputMode="text" autoComplete="one-time-code"
+              autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
+              className="w-full rounded-xl border border-neutral-300 px-3 py-3 text-base" />
+            <div className="grid grid-cols-4 gap-2 text-sm">
+              {["Enter", "Backspace", "Tab", "Cancel"].map((k) => (
+                <button key={k} onClick={async () => {
+                  if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
+                  enqueue({ kind: "key", text: k });
+                }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k}</button>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-sm">
-            {["Enter", "Tab", "Backspace", "Escape"].map((k) => (
-              <button key={k} onClick={() => send({ kind: "key", text: k })} className="rounded-lg border border-neutral-300 py-2">{k === "Backspace" ? "⌫" : k}</button>
-            ))}
-          </div>
-          <button onClick={async () => { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); }} className="w-full py-2 text-sm text-neutral-500 underline">Cancel</button>
         </div>
       )}
 

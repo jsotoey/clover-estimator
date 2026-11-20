@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
-import { newPage, VIEWPORT } from "./browser";
+import { newPage } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -25,6 +25,20 @@ export async function claimLoginRequest(): Promise<number | null> {
      RETURNING id`
   );
   return rows[0]?.id ?? null;
+}
+
+/**
+ * The sign-in window is phone-shaped, so the picture fills the merchant's phone at real size
+ * (Clover's login and the "I'm not a robot" check both have phone layouts). Pictures are taken at 2x for sharpness.
+ */
+export const LOGIN_VIEWPORT = { width: 400, height: 760 };
+
+/** Tick Clover's "Remember this browser for 14 days" so it asks for a code less often. */
+async function rememberBrowser(page: Page): Promise<boolean> {
+  const box = page.getByLabel(/remember this browser/i).first();
+  if (!(await box.isVisible().catch(() => false))) return false;
+  if (!(await box.isChecked().catch(() => true))) await box.check({ timeout: 3000 }).catch(() => {});
+  return true;
 }
 
 /** Pages Clover only shows to a signed-in merchant. */
@@ -53,7 +67,7 @@ async function applyInputs(page: Page, id: number): Promise<void> {
   );
   for (const r of rows) {
     if (r.kind === "click" && r.x !== null && r.y !== null) {
-      await page.mouse.click(Math.round(r.x * VIEWPORT.width), Math.round(r.y * VIEWPORT.height));
+      await page.mouse.click(Math.round(r.x * LOGIN_VIEWPORT.width), Math.round(r.y * LOGIN_VIEWPORT.height));
     } else if (r.kind === "type" && r.text) {
       await page.keyboard.type(r.text, { delay: 40 });
     } else if (r.kind === "key" && r.text && /^(Enter|Tab|Backspace|Escape)$/.test(r.text)) {
@@ -74,7 +88,9 @@ async function cancelled(id: number): Promise<boolean> {
  */
 export async function runLiveLogin(id: number): Promise<boolean> {
   const page = await newPage();
+  await page.setViewportSize(LOGIN_VIEWPORT);
   const started = Date.now();
+  let remembered = false;
   try {
     if (await checkSession(page)) {
       await setLogin(id, { status: "done", message: "Already connected to Clover.", frame: null });
@@ -84,12 +100,13 @@ export async function runLiveLogin(id: number): Promise<boolean> {
     await page.goto(config.cloverLoginUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForTimeout(1500);
     await prefillCredentials(page);
-    await setLogin(id, { message: "Your email and password are filled in. Tap Log in, then enter any code Clover sends you." });
+    await setLogin(id, { message: "Your email and password are filled in. Tap Log in, then type the code Clover texts you." });
 
     while (Date.now() - started < config.liveLoginTimeoutMs) {
       if (await cancelled(id)) return false;
       await applyInputs(page, id);
-      const shot = await page.screenshot({ type: "jpeg", quality: 55 });
+      if (!remembered) remembered = await rememberBrowser(page);
+      const shot = await page.screenshot({ type: "jpeg", quality: 60, scale: "device" });
       await setLogin(id, { frame: shot });
       // Signed in only once Clover shows a dashboard page (a code/verification step is NOT done yet).
       if (SIGNED_IN_PATH.test(new URL(page.url()).pathname)) {
@@ -101,7 +118,7 @@ export async function runLiveLogin(id: number): Promise<boolean> {
           return true;
         }
       }
-      await page.waitForTimeout(650);
+      await page.waitForTimeout(400);
     }
     await setLogin(id, { status: "failed", message: "Timed out. Open Connect Clover to try again.", frame: null });
     await logEvent(null, "login_timeout", { loginId: id });
