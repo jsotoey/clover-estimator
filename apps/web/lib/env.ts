@@ -23,11 +23,11 @@ export const env = {
   /** The business's standard terms, used unless the owner says otherwise. */
   terms: () => {
     const deposit = Number(process.env.DEFAULT_DEPOSIT_PERCENT ?? 50);
-    const validDays = Number(process.env.DEFAULT_VALID_DAYS ?? 30);
+    const validDays = Number(process.env.DEFAULT_VALID_DAYS ?? 29);
     const taxable = (process.env.DEFAULT_TAXABLE ?? "true").toLowerCase() !== "false";
     return {
       depositPercent: deposit >= 0 && deposit <= 100 ? deposit : 50,
-      validDays: validDays > 0 && validDays <= 365 ? validDays : 30,
+      validDays: validDays > 0 && validDays <= 29 ? validDays : 29,
       taxable,
     };
   },
