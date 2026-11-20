@@ -23,6 +23,27 @@ async function releaseWaitingEstimates() {
 /** Handle a pending "Connect Clover" request, if any. Returns true if one ran. */
 let signedIn = true; // until a check says otherwise
 
+/**
+ * On a Mac started with scripts/mac-autorun.sh: when a newer version is published, exit between jobs
+ * so the runner downloads it and starts again (the Clover sign-in is saved, so nothing is lost).
+ */
+let lastUpdateCheck = Date.now();
+async function newerVersionPublished(): Promise<boolean> {
+  const mine = process.env.BUILD_SHA;
+  if (!mine || Date.now() - lastUpdateCheck < 5 * 60_000) return false;
+  lastUpdateCheck = Date.now();
+  try {
+    const r = await fetch("https://api.github.com/repos/jsotoey/clover-estimator/commits/claude/milestones-1-2", {
+      headers: { accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return false;
+    const latest = ((await r.json()) as { sha?: string }).sha;
+    return !!latest && latest !== mine;
+  } catch {
+    return false;
+  }
+}
+
 async function handleLoginRequest(): Promise<boolean> {
   const loginId = await claimLoginRequest();
   if (!loginId) return false;
@@ -133,6 +154,11 @@ async function main() {
   let lastKeepAlive = Date.now();
   for (;;) {
     try {
+      if (await newerVersionPublished()) {
+        console.log("A newer version is available. Restarting to update...");
+        await saveSession().catch(() => {});
+        process.exit(42);
+      }
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
       if (signedIn && (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; }))) continue;

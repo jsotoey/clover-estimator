@@ -48,11 +48,11 @@ set -a; source "$ENV_FILE"; set +a
 mkdir -p "$DATA_DIR"
 
 echo "Installing (first run takes a few minutes)..."
-npx -y pnpm@10.28.0 install --frozen-lockfile
+npx -y pnpm@10.28.0 install --frozen-lockfile --prefer-offline
 npx -y pnpm@10.28.0 --filter worker exec playwright install chromium
 npx -y pnpm@10.28.0 --filter worker migrate
 
 echo
 echo "Worker running. When Clover needs a sign-in, a normal Chrome window opens here: log in there, then tap I'm signed in in the app."
-echo "Leave this window open. Your Mac will stay awake while it runs. Press Ctrl+C to stop."
-exec caffeinate -i npx -y pnpm@10.28.0 --filter worker start
+echo "Leave this window open. Press Ctrl+C to stop."
+exec npx -y pnpm@10.28.0 --filter worker start
