@@ -23,6 +23,9 @@ export async function capture(page: Page, label: string, opts: { html?: boolean;
   if (opts.aria) {
     const aria = await page.locator("body").ariaSnapshot().catch((e) => `ariaSnapshot failed: ${e}`);
     await saveArtifact(`${label}.aria.yaml`, `# ${page.url()}\n${aria}`, "text/yaml");
+    // Also print it, so the page structure can be read straight from Railway's logs (no Blob needed).
+    // An ARIA snapshot lists labels and roles; password fields never show their contents.
+    console.log(`[aria:${label}] ${page.url()}\n${aria}\n[/aria:${label}]`);
   }
   console.log(`[capture] ${label} -> ${url}`);
   return url;
