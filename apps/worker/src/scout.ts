@@ -59,23 +59,23 @@ export async function runScoutTask(): Promise<boolean> {
 async function describe(page: Page) {
   const url = page.url();
   const aria = (await page.locator("body").ariaSnapshot({ timeout: 10_000 }).catch(() => "")).slice(0, 30_000);
-  const controls = await page.evaluate(() => {
-    const out: string[] = [];
-    const label = (el: Element) => {
+  // Passed as text: the TypeScript runner adds helper names to inline functions that don't exist in the page.
+  const controls = (await page.evaluate(`(() => {
+    const out = [];
+    const label = (el) => {
       const id = el.getAttribute("id");
-      const byFor = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent : null;
+      const byFor = id ? document.querySelector('label[for="' + CSS.escape(id) + '"]')?.textContent : null;
       return (el.getAttribute("aria-label") || byFor || el.closest("label")?.textContent || el.getAttribute("placeholder") || el.getAttribute("name") || "").trim().slice(0, 80);
     };
     for (const el of Array.from(document.querySelectorAll("input, select, textarea, button, [role=combobox], [role=checkbox], [role=switch], [role=radio]"))) {
-      const h = el as HTMLElement;
-      if (!h.offsetParent && h.tagName !== "SELECT") continue; // hidden
-      const kind = el.tagName.toLowerCase() + (el.getAttribute("type") ? `[${el.getAttribute("type")}]` : "") + (el.getAttribute("role") ? `{${el.getAttribute("role")}}` : "");
-      const text = el.tagName === "BUTTON" ? (h.innerText || "").trim().slice(0, 60) : label(el);
-      const value = (el as HTMLInputElement).value !== undefined && el.tagName !== "BUTTON" ? ` = "${String((el as HTMLInputElement).value).slice(0, 40)}"` : "";
-      const dis = (el as HTMLButtonElement).disabled ? " (disabled)" : "";
-      out.push(`${kind} ${text}${value}${dis}`);
+      if (!el.offsetParent && el.tagName !== "SELECT") continue;
+      const kind = el.tagName.toLowerCase() + (el.getAttribute("type") ? "[" + el.getAttribute("type") + "]" : "") + (el.getAttribute("role") ? "{" + el.getAttribute("role") + "}" : "");
+      const text = el.tagName === "BUTTON" ? (el.innerText || "").trim().slice(0, 60) : label(el);
+      const value = el.tagName !== "BUTTON" && el.value !== undefined ? ' = "' + String(el.value).slice(0, 40) + '"' : "";
+      const dis = el.disabled ? " (disabled)" : "";
+      out.push(kind + " " + text + value + dis);
     }
     return out.slice(0, 200);
-  });
+  })()`)) as string[];
   return { url, controls, aria };
 }
