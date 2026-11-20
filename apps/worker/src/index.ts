@@ -111,9 +111,9 @@ async function main() {
     try {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
-      // While idle, visit Clover every 30 minutes so the session stays fresh, and save it.
+      // While idle, visit Clover every 10 minutes so an idle sign-out doesn't happen, and save the session.
       // Only while signed in: when signed out, don't keep loading Clover's login page (it only adds suspicion).
-      if (signedIn && Date.now() - lastKeepAlive > 30 * 60 * 1000) {
+      if (signedIn && Date.now() - lastKeepAlive > 10 * 60 * 1000) {
         lastKeepAlive = Date.now();
         const page = await newPage();
         try {

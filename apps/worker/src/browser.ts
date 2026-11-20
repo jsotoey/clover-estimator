@@ -21,13 +21,16 @@ export function forgetSavedSession() {
   fs.rmSync(cookieFile(), { force: true });
 }
 
+export function writeSavedSession(cookies: unknown[]) {
+  const tmp = `${cookieFile()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cookies), { mode: 0o600 });
+  fs.renameSync(tmp, cookieFile());
+}
+
 export async function saveSession(ctx?: BrowserContext): Promise<void> {
   try {
     const c = ctx ?? (await getContext());
-    const cookies = await c.cookies();
-    const tmp = `${cookieFile()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(cookies), { mode: 0o600 });
-    fs.renameSync(tmp, cookieFile());
+    writeSavedSession(await c.cookies());
   } catch (e) {
     console.error("saveSession failed", e instanceof Error ? e.message : e);
   }

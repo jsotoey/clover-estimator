@@ -1,8 +1,8 @@
-import type { Page } from "playwright";
+import { chromium, type Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
 import { spawn } from "node:child_process";
-import { closeContext, clearProfileLock, forgetSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
+import { closeContext, clearProfileLock, forgetSavedSession, writeSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -193,6 +193,8 @@ export async function runLiveLogin(id: number): Promise<boolean> {
   }
 }
 
+const LOCAL_DEBUG_PORT = 9333;
+
 export const LOCAL_SIGNIN_MESSAGE =
   "Sign in on the Mac: a normal Chrome window opened there. Log in like you always do (tick Remember this browser), then tap I'm signed in here.";
 
@@ -204,8 +206,11 @@ async function runLocalSignin(id: number, started: number): Promise<boolean> {
   const dir = workerProfileDir();
   await closeContext();
   clearProfileLock(dir);
+  // Plain Chrome, nothing attached while you sign in. The local-only debug port lets the worker copy the
+  // sign-in out of this window afterwards (Clover keeps it in cookies that Chrome drops when it closes).
   const chrome = spawn(config.chromeApp, [
-    `--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--new-window", config.cloverLoginUrl,
+    `--user-data-dir=${dir}`, `--remote-debugging-port=${LOCAL_DEBUG_PORT}`, "--remote-debugging-address=127.0.0.1",
+    "--no-first-run", "--no-default-browser-check", "--new-window", config.cloverLoginUrl,
   ], { stdio: "ignore" });
   let exited = false;
   chrome.on("exit", () => (exited = true));
@@ -220,14 +225,30 @@ async function runLocalSignin(id: number, started: number): Promise<boolean> {
     if (done.rowCount) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
+  // Copy the sign-in (all cookies, including the temporary ones) before Chrome closes.
+  let copied = 0;
   if (!exited) {
-    chrome.kill("SIGTERM"); // Chrome saves its cookies when asked to quit
+    try {
+      const b = await chromium.connectOverCDP(`http://127.0.0.1:${LOCAL_DEBUG_PORT}`, { timeout: 10_000 });
+      const ctx = b.contexts()[0];
+      if (ctx) {
+        const cookies = await ctx.cookies();
+        writeSavedSession(cookies);
+        copied = cookies.length;
+      }
+      await b.close().catch(() => {}); // disconnects only
+    } catch (e) {
+      console.error("could not copy the sign-in from Chrome:", e instanceof Error ? e.message : e);
+    }
+  }
+  if (!exited) {
+    chrome.kill("SIGTERM");
     for (let i = 0; i < 20 && !exited; i++) await new Promise((r) => setTimeout(r, 500));
   }
   await new Promise((r) => setTimeout(r, 1000));
 
-  forgetSavedSession(); // the profile itself now holds the fresh sign-in
-  const page = await newPage();
+  if (!copied) forgetSavedSession(); // nothing fresh copied: don't let an old copy overwrite the profile
+  const page = await newPage(); // restores the copied sign-in on launch
   try {
     if (await checkSession(page)) {
       await saveSession();
