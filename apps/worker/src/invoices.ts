@@ -42,9 +42,14 @@ function invoiceText(job: InvoiceJob): { itemName: string; note: string } {
   const work = e.line_items.map((l) => l.description).join(", ");
   const test = /^\s*TEST\b/i.test(e.note) ? "TEST INVOICE, please ignore. " : "";
   const label = job.kind === "deposit" ? `Deposit (${e.deposit_percent}%)` : e.deposit_percent > 0 ? "Balance" : "Payment";
+  // Clover cuts item names at 80 characters, so the item stays short and the work goes in the note.
+  const thanks = job.kind === "deposit" ? "Thank you, this locks in your start date." : "Thank you for your business!";
+  const head = `${test}${label} for ${num}.`;
+  const room = 200 - head.length - thanks.length - 3;
+  const workText = room > 10 ? ` ${work.length > room ? work.slice(0, room - 1) + "…" : work}.` : "";
   return {
-    itemName: `${label} for ${num}: ${work}`.slice(0, 80),
-    note: `${test}${label} for ${num}. ${job.kind === "deposit" ? "Thank you, this locks in your start date." : "Thank you for your business!"}`.slice(0, 200),
+    itemName: `${label} for ${num}`.slice(0, 80),
+    note: `${head}${workText} ${thanks}`.slice(0, 200),
   };
 }
 
