@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { profileDir } from "./session";
 import { config } from "./config";
@@ -14,8 +16,14 @@ let shared: Promise<BrowserContext> | null = null;
  */
 export function getContext(): Promise<BrowserContext> {
   if (!shared) {
+    // The worker is the only Chrome using this profile. A redeploy can leave Chrome's lock files behind
+    // (from the old container), which makes Chrome refuse to start, so clear them first.
+    const dir = profileDir(config.dataDir);
+    for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+      try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* not there */ }
+    }
     shared = chromium
-      .launchPersistentContext(profileDir(config.dataDir), {
+      .launchPersistentContext(dir, {
         headless: config.headless,
         executablePath: process.env.CHROME_PATH || undefined,
         viewport: VIEWPORT,

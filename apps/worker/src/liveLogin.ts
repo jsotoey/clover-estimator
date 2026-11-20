@@ -87,11 +87,12 @@ async function cancelled(id: number): Promise<boolean> {
  * and handles any code or check Clover shows.
  */
 export async function runLiveLogin(id: number): Promise<boolean> {
-  const page = await newPage();
-  await page.setViewportSize(LOGIN_VIEWPORT);
   const started = Date.now();
   let remembered = false;
+  let page: Page | null = null;
   try {
+    page = await newPage();
+    await page.setViewportSize(LOGIN_VIEWPORT);
     if (await checkSession(page)) {
       await setLogin(id, { status: "done", message: "Already connected to Clover.", frame: null });
       await logEvent(null, "login_done", { loginId: id, seconds: 0, already: true });
@@ -129,6 +130,6 @@ export async function runLiveLogin(id: number): Promise<boolean> {
     await logEvent(null, "login_failed", { loginId: id, error: msg });
     return false;
   } finally {
-    await page.close().catch(() => {});
+    await page?.close().catch(() => {});
   }
 }
