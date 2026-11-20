@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 export interface StatusData {
-  status: string; error: string | null; cloverEstimateNumber: string | null; screenshots: string[];
+  status: string; signInOpen?: boolean; error: string | null; cloverEstimateNumber: string | null; screenshots: string[];
 }
 
 export default function StatusBanner({ id, data, onRetry }: { id: string; data: StatusData; onRetry: () => void }) {
@@ -10,17 +10,17 @@ export default function StatusBanner({ id, data, onRetry }: { id: string; data: 
   const [sent, setSent] = useState(false);
   const last = data.screenshots[data.screenshots.length - 1];
 
-  if (data.status === "approved" || data.status === "sending")
-    return <div className="rounded-xl bg-blue-50 p-4 text-blue-900">Putting it into Clover… this takes about a minute.</div>;
-
-  if (data.status === "needs_login")
+  if (data.status === "needs_login" || (data.status === "approved" && data.signInOpen))
     return (
       <div className="rounded-xl bg-amber-50 p-4 text-amber-900">
-        <p className="font-semibold">Clover needs you to sign in</p>
-        <p className="text-sm">Your estimate is saved and will send right after.</p>
-        <a href="/clover" className="mt-2 inline-block rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white">Sign in to Clover</a>
+        <p className="font-semibold">Waiting for you to sign in to Clover</p>
+        <p className="text-sm">Your estimate is saved and goes into Clover right after you sign in.</p>
+        <a href="/clover" className="mt-2 inline-block rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white">Finish signing in</a>
       </div>
     );
+
+  if (data.status === "approved" || data.status === "sending")
+    return <div className="rounded-xl bg-blue-50 p-4 text-blue-900">Putting it into Clover… this takes about a minute.</div>;
 
   if (data.status === "needs_code")
     return (
