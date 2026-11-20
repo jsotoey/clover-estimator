@@ -9,6 +9,12 @@ import { addScreenshot, claimNext, logEvent, setStatus, waitForCode } from "./db
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
+  // Missing login: wait quietly instead of crash-looping (Railway emails on every crash).
+  // Adding the variables in Railway redeploys the service automatically.
+  if (!process.env.CLOVER_EMAIL || !process.env.CLOVER_PASSWORD) {
+    console.log("Waiting for CLOVER_EMAIL and CLOVER_PASSWORD. Add them in Railway > Variables; the service redeploys on its own.");
+    for (;;) await sleep(60 * 60 * 1000);
+  }
   const email = config.cloverEmail();
   if (ensureProfileForLogin(config.dataDir, email)) {
     await logEvent(null, "login_changed", { note: "CLOVER_EMAIL changed; saved Clover session cleared" });
