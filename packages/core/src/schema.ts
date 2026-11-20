@@ -13,7 +13,7 @@ export const EstimateSchema = z
     customer: z.object({
       name: z.string().min(1),
       phone: z.string().optional(),
-      email: z.string().email().optional(),
+      email: z.string().email(), // Clover requires an email to create a customer
       job_address: z.string().optional(),
     }),
     line_items: z.array(LineItemSchema).min(1),
@@ -28,10 +28,7 @@ export const EstimateSchema = z
     photo_ids: z.array(z.string()).max(3).optional(),
   })
   .superRefine((e, ctx) => {
-    const needEmail = e.delivery === "email" || e.delivery === "both";
     const needPhone = e.delivery === "sms" || e.delivery === "both";
-    if (needEmail && !e.customer.email)
-      ctx.addIssue({ code: "custom", path: ["customer", "email"], message: "Email needed for email delivery" });
     if (needPhone && !e.customer.phone)
       ctx.addIssue({ code: "custom", path: ["customer", "phone"], message: "Phone needed for text delivery" });
   });

@@ -10,7 +10,7 @@ export const SUBMIT_ESTIMATE_TOOL = {
     properties: {
       customer: {
         type: "object",
-        required: ["name"],
+        required: ["name", "email"],
         properties: { name: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, job_address: { type: "string" } },
       },
       line_items: {

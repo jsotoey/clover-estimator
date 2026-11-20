@@ -102,8 +102,11 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   await step("02-customer");
 
   // 3. Dates (best effort: the note also carries them).
-  await setDate(page, /service date/i, estimate.service_date);
-  await setDate(page, /expir/i, estimate.expiration_date);
+  await setDate(page, /service date/i, estimate.service_date, false);
+  await setDate(page, /expiration date/i, estimate.expiration_date, true);
+  // Clover pre-fills the next estimate number (e.g. 000002); keep it for the app.
+  const numberField = await firstVisible([page.getByLabel(/estimate number/i)], 2000);
+  const cloverNumber = numberField ? (await numberField.inputValue().catch(() => "")) || undefined : undefined;
 
   // 4. Line items: one custom item per line, exact card price from our pricing code, ONE tax.
   for (const line of computed.lines) {
@@ -131,13 +134,16 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   await step("04-form-complete");
 
   // 8. Review page: delivery method.
-  const review = await must([page.getByRole("button", { name: /review\s*&?\s*(and\s*)?send/i }), page.getByRole("button", { name: /^review/i })], '"Review & Send"');
+  const review = await must([
+    page.getByRole("button", { name: /^preview$/i }),
+    page.getByRole("button", { name: /review\s*&?\s*(and\s*)?send/i }),
+  ], '"Preview"');
   await review.click();
   await page.waitForLoadState("networkidle").catch(() => {});
   await setDelivery(page, estimate);
   await step("05-review");
 
-  if (opts.dryRun) return { cloverTotalCents: cloverTotal, sent: false };
+  if (opts.dryRun) return { cloverNumber, cloverTotalCents: cloverTotal, sent: false };
 
   // 9. Send.
   const send = await must([page.getByRole("button", { name: /^send$/i }), page.getByRole("button", { name: /send estimate/i })], "the Send button");
@@ -145,8 +151,7 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.waitForTimeout(3000);
   await step("06-sent");
-  const cloverNumber = await findEstimateNumber(page, estimate.customer.name, computed.totalCents);
-  return { cloverNumber, cloverTotalCents: cloverTotal, sent: true };
+  return { cloverNumber: cloverNumber ?? (await findEstimateNumber(page, estimate.customer.name, computed.totalCents)), cloverTotalCents: cloverTotal, sent: true };
 }
 
 async function selectOrCreateCustomer(page: Page, e: Estimate) {
@@ -185,12 +190,17 @@ async function selectOrCreateCustomer(page: Page, e: Estimate) {
   else {
     await (await must([page.getByLabel(/first name/i)], "the first name field")).fill(first);
     const lastF = await firstVisible([page.getByLabel(/last name/i)], 1500);
-    if (lastF && last) await lastF.fill(last);
+    if (lastF) await lastF.fill(last || "-"); // Clover requires a last name
   }
-  if (e.customer.email) await (await must([page.getByLabel(/email/i)], "the customer email field")).fill(e.customer.email);
+  if (!e.customer.email) throw new FillError("Clover needs an email to create a new customer");
+  await (await must([page.getByLabel(/^email/i)], "the customer email field")).fill(e.customer.email);
   if (e.customer.phone) {
     const phone = await firstVisible([page.getByLabel(/phone/i)], 1500);
-    if (phone) await phone.fill(e.customer.phone);
+    if (phone) await phone.pressSequentially(e.customer.phone.replace(/\D/g, ""), { delay: 20 });
+  }
+  if (e.customer.job_address) {
+    const addr = await firstVisible([page.getByLabel(/^address$/i)], 1500);
+    if (addr) await addr.fill(e.customer.job_address);
   }
   const save = await must([
     page.getByRole("button", { name: /^(save|add|add customer|create)$/i }),
@@ -200,16 +210,28 @@ async function selectOrCreateCustomer(page: Page, e: Estimate) {
   await page.waitForTimeout(1500);
 }
 
-async function setDate(page: Page, label: RegExp, iso: string) {
-  const input = await firstVisible([page.getByLabel(label), page.getByPlaceholder(label)], 1500);
-  if (!input) return; // best effort; dates are also in the note
+async function setDate(page: Page, label: RegExp, iso: string, required: boolean) {
+  const input = await firstVisible([page.getByLabel(label)], 3000);
+  if (!input) {
+    if (required) throw new FillError(`Could not find the ${label.source} field`);
+    return; // optional; dates are also in the note
+  }
   const tag = await input.evaluate((el) => (el as HTMLElement).tagName.toLowerCase()).catch(() => "");
   const type = await input.getAttribute("type").catch(() => null);
   try {
     if (tag === "input" && type === "date") await input.fill(iso);
-    else if (tag === "input") { await input.fill(""); await input.type(toUSDate(iso)); await input.press("Enter").catch(() => {}); }
-  } catch {
-    /* non-text date picker: leave Clover's default */
+    else if (tag === "input") {
+      await input.click();
+      await input.fill("");
+      await input.pressSequentially(toUSDate(iso), { delay: 30 });
+      await input.press("Tab").catch(() => {});
+    }
+  } catch (e) {
+    if (required) throw new FillError(`Could not set ${label.source}: ${(e as Error).message}`);
+  }
+  if (required) {
+    const v = await input.inputValue().catch(() => "");
+    if (v.replace(/\D/g, "") !== toUSDate(iso).replace(/\D/g, "")) throw new FillError(`${label.source} did not take the value ${toUSDate(iso)} (shows "${v}")`);
   }
 }
 
@@ -249,9 +271,14 @@ async function addCustomItem(page: Page, name: string, priceCents: number, taxab
   }
   for (const { i } of taxIdx) {
     const b = boxes.nth(i);
-    const checked = await b.isChecked().catch(() => false);
-    if (i === want && !checked && (await b.isEnabled())) await b.check({ force: true });
-    if (i !== want && checked && (await b.isEnabled())) await b.uncheck({ force: true });
+    if (i !== want && (await b.isChecked().catch(() => false))) await b.uncheck({ force: true });
+  }
+  if (want !== undefined) {
+    const b = boxes.nth(want);
+    if (!(await b.isChecked().catch(() => false))) {
+      if (!(await b.isEnabled())) await page.waitForTimeout(500);
+      if (await b.isEnabled()) await b.check({ force: true });
+    }
   }
 
   const add = await must([scope.getByRole("button", { name: /^add$/i })], 'the "Add" button for the item');
@@ -306,8 +333,8 @@ async function setDelivery(page: Page, e: Estimate) {
   const sms = await firstVisible([page.getByRole("checkbox", { name: /text|sms/i })], 1000);
   if (email && (await email.isEnabled())) await (wantEmail ? email.check({ force: true }) : email.uncheck({ force: true }));
   if (sms && (await sms.isEnabled())) await (wantSms ? sms.check({ force: true }) : sms.uncheck({ force: true }));
-  if (wantSms && !sms) throw new FillError("This Clover page has no text-message option; change delivery to email");
-  if (wantEmail && !email) throw new FillError("This Clover page has no email option");
+  if (wantSms && !sms && email && (await email.isEnabled())) await email.check({ force: true }); // no text option: email instead
+  if (!email && !sms) throw new FillError("Could not find any delivery option on the review page");
 }
 
 async function findEstimateNumber(page: Page, customerName: string, totalCents: number): Promise<string | undefined> {
