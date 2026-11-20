@@ -76,3 +76,14 @@ CREATE TABLE IF NOT EXISTS clover_login_input (
   text       text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Look-only scouting tasks for the worker (map Clover screens). Never sends or saves anything.
+CREATE TABLE IF NOT EXISTS worker_tasks (
+  id          bigserial PRIMARY KEY,
+  kind        text NOT NULL,
+  payload     jsonb NOT NULL DEFAULT '{}',
+  status      text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','done','failed')),
+  result      jsonb,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);

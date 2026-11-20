@@ -4,6 +4,7 @@ import { newPage, saveSession } from "./browser";
 import { checkSession } from "./clover/session";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
+import { runScoutTask } from "./scout";
 import { fillEstimate } from "./clover/fillEstimate";
 import { addScreenshot, claimNext, db, logEvent, setStatus } from "./db";
 import { claimLoginRequest, requestLogin, runLiveLogin } from "./liveLogin";
@@ -129,6 +130,7 @@ async function main() {
     try {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
+      if (signedIn && (await runScoutTask().catch((e) => { console.error("scout error", e); return false; }))) continue;
       // While idle, visit Clover every 10 minutes so an idle sign-out doesn't happen, and save the session.
       // Only while signed in: when signed out, don't keep loading Clover's login page (it only adds suspicion).
       if (signedIn && Date.now() - lastKeepAlive > 10 * 60 * 1000) {
