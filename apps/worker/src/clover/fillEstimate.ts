@@ -146,11 +146,13 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   if (opts.dryRun) return { cloverNumber, cloverTotalCents: cloverTotal, sent: false };
 
   // 9. Send.
-  const send = await must([page.getByRole("button", { name: /^send$/i }), page.getByRole("button", { name: /send estimate/i })], "the Send button");
+  const send = await must([page.getByRole("button", { name: /^send estimate$/i }), page.getByRole("button", { name: /^send$/i })], "the Send estimate button");
   await send.click();
   await page.waitForLoadState("networkidle").catch(() => {});
-  await page.waitForTimeout(3000);
+  // Real page: returns to /estimates with "Estimate emailed successfully."
+  const confirmed = await page.getByText(/estimate (emailed|sent).*successfully/i).first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
   await step("06-sent");
+  if (!confirmed) throw new FillError("Clicked Send, but Clover did not confirm it was sent. Check the screenshot and the Estimates list before retrying.");
   return { cloverNumber: cloverNumber ?? (await findEstimateNumber(page, estimate.customer.name, computed.totalCents)), cloverTotalCents: cloverTotal, sent: true };
 }
 
@@ -329,12 +331,17 @@ export async function readTotalCents(page: Page): Promise<number | null> {
 async function setDelivery(page: Page, e: Estimate) {
   const wantEmail = e.delivery === "email" || e.delivery === "both";
   const wantSms = e.delivery === "sms" || e.delivery === "both";
-  const email = await firstVisible([page.getByRole("checkbox", { name: /email/i })], 3000);
+  // Real page (Nov 20): "Send estimate via email" (checked by default) and
+  // "Send a link via SMS message" (greyed out when the customer has no phone).
+  const email = await firstVisible([page.getByRole("checkbox", { name: /email/i })], 5000);
   const sms = await firstVisible([page.getByRole("checkbox", { name: /text|sms/i })], 1000);
-  if (email && (await email.isEnabled())) await (wantEmail ? email.check({ force: true }) : email.uncheck({ force: true }));
-  if (sms && (await sms.isEnabled())) await (wantSms ? sms.check({ force: true }) : sms.uncheck({ force: true }));
-  if (wantSms && !sms && email && (await email.isEnabled())) await email.check({ force: true }); // no text option: email instead
-  if (!email && !sms) throw new FillError("Could not find any delivery option on the review page");
+  const smsUsable = !!sms && (await sms.isEnabled());
+  const emailUsable = !!email && (await email.isEnabled());
+  if (!email && !sms) throw new FillError("Could not find any delivery option on the send page");
+  if (smsUsable) await (wantSms ? sms!.check({ force: true }) : sms!.uncheck({ force: true }));
+  // Keep email on whenever text can't go out, so the customer always gets it.
+  const keepEmail = wantEmail || !smsUsable;
+  if (emailUsable) await (keepEmail ? email!.check({ force: true }) : email!.uncheck({ force: true }));
 }
 
 async function findEstimateNumber(page: Page, customerName: string, totalCents: number): Promise<string | undefined> {
