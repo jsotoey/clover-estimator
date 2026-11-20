@@ -12,21 +12,29 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   exit 1
 fi
 
+# A settings file from an earlier try with an unusable database address: start over.
+if [ -f "$ENV_FILE" ] && grep -q '\${{' "$ENV_FILE"; then rm -f "$ENV_FILE"; fi
+
 if [ ! -f "$ENV_FILE" ]; then
-  echo "First-time setup. Nothing you type here is shown or sent anywhere except this Mac's settings file."
-  read -r -p "Paste DATABASE_PUBLIC_URL (Railway > Postgres > Variables): " DBURL
+  echo "First-time setup. What you type is saved only on this Mac."
+  while :; do
+    read -r -p "Paste the database URL (Railway > Postgres > Connect > Public Network): " DBURL
+    case "$DBURL" in
+      *'${{'*) echo "That's Railway's template, not the real address. Use Postgres > Connect > Public Network and copy the URL there.";;
+      postgres://*|postgresql://*) break;;
+      *) echo "It should start with postgresql://  Try again.";;
+    esac
+  done
   read -r -p "Clover email: " CEMAIL
   read -r -s -p "Clover password (hidden): " CPASS; echo
   umask 077
-  cat > "$ENV_FILE" <<EOV
-DATABASE_URL=$DBURL
-CLOVER_EMAIL=$CEMAIL
-CLOVER_PASSWORD=$CPASS
-MERCHANT_TAX_RATE=0.06625
-DRY_RUN=true
-HEADLESS=false
-DATA_DIR=$DATA_DIR
-EOV
+  {
+    printf 'DATABASE_URL=%q\n' "$DBURL"
+    printf 'CLOVER_EMAIL=%q\n' "$CEMAIL"
+    printf 'CLOVER_PASSWORD=%q\n' "$CPASS"
+    printf 'MERCHANT_TAX_RATE=0.06625\nDRY_RUN=true\nHEADLESS=false\n'
+    printf 'DATA_DIR=%q\n' "$DATA_DIR"
+  } > "$ENV_FILE"
   echo "Saved to $ENV_FILE (only your user can read it)."
 fi
 
