@@ -5,6 +5,7 @@ import { checkSession } from "./clover/session";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { runScoutTask } from "./scout";
+import { checkAcceptances, createInvoiceRows, processInvoice } from "./invoices";
 import { fillEstimate } from "./clover/fillEstimate";
 import { addScreenshot, claimNext, db, logEvent, setStatus } from "./db";
 import { claimLoginRequest, requestLogin, runLiveLogin } from "./liveLogin";
@@ -75,6 +76,10 @@ async function processEstimate() {
       },
     });
     await saveSession();
+    if (res.sent) {
+      await db().query(`UPDATE estimates SET sent_at = now() WHERE id = $1`, [id]);
+      await createInvoiceRows(id, job.estimate, job.computed);
+    }
     await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: res.sent ? deliveryNote ?? undefined : locked ? "dry run: not sent (test lock: only sends to the test contacts)" : "dry run: not sent" });
     await logEvent(id, "done", { sent: res.sent, cloverTotalCents: res.cloverTotalCents, cloverNumber: res.cloverNumber });
   } catch (e) {
@@ -130,6 +135,8 @@ async function main() {
     try {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
+      if (signedIn && (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; }))) continue;
+      if (signedIn && (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; }))) continue;
       if (signedIn && (await runScoutTask().catch((e) => { console.error("scout error", e); return false; }))) continue;
       // While idle, visit Clover every 10 minutes so an idle sign-out doesn't happen, and save the session.
       // Only while signed in: when signed out, don't keep loading Clover's login page (it only adds suspicion).

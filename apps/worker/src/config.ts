@@ -15,6 +15,9 @@ export const config = {
   dryRun: bool(process.env.DRY_RUN, true), // default SAFE: never clicks Send
   recon: bool(process.env.RECON, false),
   // Test lock: when set, real sending only happens for these emails/phones; everyone else gets a test run.
+  // Deposit invoice goes out on its own when the customer accepts (otherwise the merchant taps Send).
+  depositAutoSend: bool(process.env.DEPOSIT_AUTO_SEND, false),
+  acceptCheckMs: Number(process.env.ACCEPT_CHECK_MINUTES ?? 3) * 60_000,
   sendOnlyTo: (process.env.SEND_ONLY_TO ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
   // Headed Chrome in a virtual display on the server (Dockerfile runs xvfb-run). HEADLESS=true for local tests.
   headless: bool(process.env.HEADLESS, false),

@@ -71,3 +71,28 @@ describe("EstimateSchema", () => {
   it("requires a phone for text delivery", () =>
     expect(EstimateSchema.safeParse({ ...good, delivery: "sms" }).success).toBe(false));
 });
+
+import { splitInvoices } from "../src/pricing";
+describe("splitInvoices", () => {
+  it("splits the TEST 1 estimate like Clover will bill it", () => {
+    // $937.50 card subtotal, NJ 6.625%: estimate total $999.61
+    const s = splitInvoices(93750, 0.06625, true, 50);
+    expect(s.deposit).toEqual({ subtotalCents: 46875, taxCents: 3105, totalCents: 49980 });
+    expect(s.balance).toEqual({ subtotalCents: 46875, taxCents: 3105, totalCents: 49980 });
+  });
+  it("odd subtotal: deposit gets the rounding, both taxed separately", () => {
+    const s = splitInvoices(104169, 0.06625, true, 50);
+    expect(s.deposit!.subtotalCents + s.balance.subtotalCents).toBe(104169);
+    expect(s.deposit!.subtotalCents).toBe(52085);
+  });
+  it("no tax, 30% deposit", () => {
+    const s = splitInvoices(291667, 0.06625, false, 30);
+    expect(s.deposit).toEqual({ subtotalCents: 87500, taxCents: 0, totalCents: 87500 });
+    expect(s.balance.totalCents).toBe(204167);
+  });
+  it("no deposit means one invoice for everything", () => {
+    const s = splitInvoices(10000, 0.06625, true, 0);
+    expect(s.deposit).toBeNull();
+    expect(s.balance.totalCents).toBe(10663);
+  });
+});

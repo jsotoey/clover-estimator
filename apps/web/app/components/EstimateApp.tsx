@@ -10,8 +10,16 @@ type Msg = { role: "user" | "assistant"; text: string; photos?: string[] };
 type Ask = { question: string; options: string[]; datePicker: boolean };
 const GREETING = "Tell me about the job: the customer's name and email, the work, the price, and when you start. Talk or type, all in one go. I'll put the estimate together.";
 
+type RecentItem = { id: string; status: string; error: string | null; number: string | null; accepted_at: string | null; updated_at: string; customer: string | null; total_cents: number | null };
+
+function recentLabel(r: RecentItem): string {
+  if (r.status === "sent") return r.error?.startsWith("dry run") ? "Test run" : r.accepted_at ? "Accepted" : "Sent";
+  return ({ ready_for_review: "Ready to approve", approved: "In progress", sending: "In progress", needs_login: "Waiting for sign-in", failed: "Didn't go through", drafting: "Draft" } as Record<string, string>)[r.status] ?? r.status;
+}
+
 export default function EstimateApp({ businessName, taxRate }: { businessName: string; taxRate: number }) {
   const [estimateId, setEstimateId] = useState<string | null>(null);
+  const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "assistant", text: GREETING }]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,13 +37,38 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
 
   // Poll the worker's progress after approval.
   useEffect(() => {
-    if (!estimateId || !status || ["sent", "failed"].includes(status.status)) return;
+    if (!estimateId || !status) return;
+    // After sending, keep an eye on acceptance and invoices (slower).
+    const watching = status.status === "sent" && status.sentForReal &&
+      (!status.acceptedAt || (status.invoices ?? []).some((i) => ["waiting", "approved", "sending"].includes(i.status)));
+    if (!watching && ["sent", "failed"].includes(status.status)) return;
     const t = setInterval(async () => {
       const r = await fetch(`/api/estimates/${estimateId}`);
       if (r.ok) setStatus(await r.json());
-    }, 3000);
+    }, watching ? 8000 : 3000);
     return () => clearInterval(t);
   }, [estimateId, status]);
+
+  async function showRecent() {
+    const r = await fetch("/api/estimates", { cache: "no-store" });
+    if (r.ok) setRecent((await r.json()).estimates);
+  }
+
+  async function openEstimate(id: string) {
+    const r = await fetch(`/api/estimates/${id}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    setRecent(null);
+    setEstimateId(id);
+    setPhotos(d.photos ?? []);
+    setAsk(null); setError(""); setInput("");
+    const who = d.estimate?.customer?.name ?? "this customer";
+    setMsgs([{ role: "assistant", text: `Estimate for ${who}${d.cloverEstimateNumber ? ` (Clover #${d.cloverEstimateNumber})` : ""}.` }]);
+    if (d.estimate && d.computed && ["ready_for_review", "drafting"].includes(d.status)) setReview({ estimate: d.estimate, computed: d.computed });
+    else setReview(null);
+    setStatus(["drafting", "ready_for_review"].includes(d.status) ? null : d);
+    try { localStorage.setItem("lastEstimate", id); } catch { /* not available */ }
+  }
 
   async function ensureEstimate(): Promise<string> {
     if (estimateId) return estimateId;
@@ -127,12 +160,35 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
   return (
     <main className="mx-auto flex h-dvh max-w-md flex-col">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
-        <h1 className="text-lg font-semibold">New estimate</h1>
+        <h1 className="text-lg font-semibold">{estimateId && status ? "Estimate" : "New estimate"}</h1>
         <div className="flex gap-4">
+          <button onClick={showRecent} className="text-sm font-medium text-neutral-600">Recent</button>
           <a href="/clover" className="text-sm font-medium text-neutral-600">Clover</a>
           <button onClick={startOver} className="text-sm font-medium text-green-800">+ New</button>
         </div>
       </header>
+
+      {recent && (
+        <div className="fixed inset-0 z-20 flex flex-col bg-neutral-50">
+          <div className="mx-auto flex w-full max-w-md items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
+            <h2 className="text-lg font-semibold">Recent estimates</h2>
+            <button onClick={() => setRecent(null)} className="text-sm font-medium text-green-800">Close</button>
+          </div>
+          <div className="mx-auto w-full max-w-md flex-1 overflow-y-auto p-4">
+            {recent.length === 0 && <p className="text-neutral-500">None yet.</p>}
+            {recent.map((r) => (
+              <button key={r.id} onClick={() => openEstimate(r.id)}
+                className="mb-2 flex w-full items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3 text-left">
+                <span>
+                  <span className="block font-medium">{r.customer ?? "No customer yet"}{r.number ? ` · #${r.number}` : ""}</span>
+                  <span className="block text-xs text-neutral-500">{new Date(r.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {recentLabel(r)}</span>
+                </span>
+                <span className="font-semibold tabular-nums">{r.total_cents != null ? `$${(r.total_cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : ""}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {msgs.map((m, i) => (

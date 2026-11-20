@@ -87,3 +87,25 @@ CREATE TABLE IF NOT EXISTS worker_tasks (
   created_at  timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );
+
+-- Deposit / balance invoices for a sent estimate. The app holds them until the merchant sends them
+-- (Clover's invoice form has no drafts). Amounts come from packages/core splitInvoices.
+ALTER TABLE estimates ADD COLUMN IF NOT EXISTS accepted_at timestamptz;
+ALTER TABLE estimates ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+ALTER TABLE estimates ADD COLUMN IF NOT EXISTS checked_at timestamptz;
+CREATE TABLE IF NOT EXISTS invoices (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_id           uuid NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+  kind                  text NOT NULL CHECK (kind IN ('deposit','balance')),
+  status                text NOT NULL DEFAULT 'waiting'
+                        CHECK (status IN ('waiting','approved','sending','sent','failed','paid_in_person')),
+  subtotal_cents        integer NOT NULL,
+  tax_cents             integer NOT NULL,
+  total_cents           integer NOT NULL,
+  clover_invoice_number text,
+  pay_link              text,
+  error                 text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (estimate_id, kind)
+);

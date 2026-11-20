@@ -68,3 +68,19 @@ export function priceEstimate(input: PricingInput): PricingResult {
 
   return { lines, subtotalCents, taxCents, totalCents, depositCents, balanceCents };
 }
+
+export interface InvoicePart { subtotalCents: number; taxCents: number; totalCents: number }
+
+/**
+ * Split an estimate into a deposit invoice and a balance invoice, the way Clover will bill them:
+ * each invoice is its own taxed line (so the merchant's sales-tax reports stay right) and Clover
+ * rounds tax per invoice. The two can therefore differ from the estimate total by a cent.
+ * depositPercent 0 means a single "balance" invoice for everything.
+ */
+export function splitInvoices(subtotalCents: number, taxRate: number, taxable: boolean, depositPercent: number): { deposit: InvoicePart | null; balance: InvoicePart } {
+  if (!(depositPercent >= 0 && depositPercent <= 100)) throw new Error("Deposit percent must be 0-100");
+  const tax = (c: number) => (taxable ? roundHalfUp(c * taxRate) : 0);
+  const part = (c: number): InvoicePart => ({ subtotalCents: c, taxCents: tax(c), totalCents: c + tax(c) });
+  const depSub = roundHalfUp((subtotalCents * depositPercent) / 100);
+  return { deposit: depSub > 0 ? part(depSub) : null, balance: part(subtotalCents - depSub) };
+}

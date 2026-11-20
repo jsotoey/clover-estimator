@@ -501,3 +501,94 @@ async function findEstimateNumber(page: Page, customerName: string, totalCents: 
   const text = await rows.last().innerText().catch(() => "");
   return text.match(/\b(\d{6})\b/)?.[1];
 }
+
+// ---------------------------------------------------------------------------------------------
+// Invoices (deposit / balance). Real form, mapped Nov 20 by the look-only scout:
+//   /invoice-manager/create: "Select customer*" combobox, "Payment due date" (Upon Receipt),
+//   "Itemized invoice" | "Quick charge", "Add custom item", Note (200), Attachments, "Review & Send".
+//   /invoice-manager/review: "Email invoice to" (always on), "Copy and share invoice link", Message,
+//   "Back" | "Send". No drafts and no text option for invoices.
+// ---------------------------------------------------------------------------------------------
+export interface InvoiceFill {
+  itemName: string;
+  note: string;
+  subtotalCents: number;
+  totalCents: number;
+}
+
+export async function fillInvoice(
+  page: Page, rawEstimate: unknown, inv: InvoiceFill,
+  opts: { dryRun: boolean; taxRate?: number; onStep?: (step: string, url: string) => Promise<void> }
+): Promise<{ sent: boolean; cloverTotalCents: number; payLink?: string }> {
+  const estimate: Estimate = EstimateSchema.parse(rawEstimate);
+  const step = async (name: string) => {
+    const url = await capture(page, `invoice-${name}`, { aria: true });
+    await opts.onStep?.(name, url);
+  };
+
+  await page.goto(`${config.cloverBaseUrl}/invoice-manager/create`, { waitUntil: "domcontentloaded", timeout: T.nav });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await must([page.getByRole("combobox", { name: /select customer/i }), page.getByLabel(/select customer/i)], "the invoice form", 15_000);
+  await step("01-new-invoice");
+
+  await selectOrCreateCustomer(page, estimate);
+  const itemized = await firstVisible([page.getByRole("radio", { name: /itemized invoice/i })], 1500);
+  if (itemized && !(await itemized.isChecked().catch(() => true))) await itemized.click().catch(() => {});
+  await addCustomItem(page, inv.itemName, inv.subtotalCents, estimate.taxable, opts.taxRate);
+  const note = await firstVisible([page.getByLabel(/^note$/i), page.getByPlaceholder(/add a note/i)], 3000);
+  if (note) await note.fill(inv.note.slice(0, 200));
+  await step("02-filled");
+
+  const cloverTotal = await readTotalCents(page);
+  if (cloverTotal === null) throw new FillError("Could not read the total on the Clover invoice form");
+  if (Math.abs(cloverTotal - inv.totalCents) > 1) {
+    throw new FillError(`Invoice total mismatch, not sending: Clover shows ${formatCents(cloverTotal)}, app computed ${formatCents(inv.totalCents)}.`);
+  }
+
+  const review = await must([page.getByRole("button", { name: /review\s*(&|and)\s*send/i })], '"Review & Send"');
+  if (!(await review.isEnabled().catch(() => false))) throw new FillError("Clover won't continue to Review & Send yet. See the screenshot.");
+  await review.click();
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await must([page.getByRole("heading", { name: /review and send invoice/i }), page.getByRole("button", { name: /^send$/i })], "the invoice review page", 15_000);
+  // Ask Clover for a shareable link too, so the merchant can text it from their own phone.
+  const share = await firstVisible([page.getByRole("checkbox", { name: /share invoice link/i })], 2000);
+  if (share) await setBox(page, share, true, /copy and share invoice link/i);
+  await step("03-review");
+  if (opts.dryRun) return { sent: false, cloverTotalCents: cloverTotal };
+
+  const send = await must([page.getByRole("button", { name: /^send$/i })], 'the invoice "Send" button');
+  await send.click();
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(2500);
+  await step("04-sent");
+  const payLink = await findPayLink(page);
+  const leftReview = !/\/invoice-manager\/review/.test(page.url());
+  const said = await page.getByText(/invoice (sent|emailed|created).*success|successfully/i).first().isVisible().catch(() => false);
+  if (!leftReview && !said && !payLink) throw new FillError("Clicked Send on the invoice, but Clover did not confirm it. Check Clover's Invoices page before retrying.");
+  return { sent: true, cloverTotalCents: cloverTotal, payLink };
+}
+
+/** After sending, Clover may show the invoice link (shared-link option). Grab it if it's on screen. */
+async function findPayLink(page: Page): Promise<string | undefined> {
+  const fromInputs = await page.locator("input").evaluateAll((els) =>
+    els.map((e) => (e as HTMLInputElement).value).find((v) => /^https:\/\/\S*clover\.com\/\S+/i.test(v || ""))
+  ).catch(() => undefined);
+  if (fromInputs) return fromInputs;
+  const text = await page.locator("body").innerText().catch(() => "");
+  return text.match(/https:\/\/\S*clover\.com\/(?:p|pay|invoice|i)\S*/i)?.[0];
+}
+
+/** Read Clover's estimates list: estimate number -> status text (e.g. "Accepted"). */
+export async function readEstimateStatuses(page: Page): Promise<Map<string, string>> {
+  await page.goto(estimatesUrl(), { waitUntil: "domcontentloaded", timeout: T.nav });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.getByRole("table").first().waitFor({ timeout: 15_000 }).catch(() => {});
+  const rows = await page.getByRole("row").allInnerTexts().catch(() => [] as string[]);
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const num = r.match(/\b(\d{6})\b/)?.[1];
+    const status = r.match(/\b(Draft|Pending|Accepted|Declined|Cancell?ed|Converted|Expired)\b/i)?.[1];
+    if (num && status) out.set(num, status);
+  }
+  return out;
+}
