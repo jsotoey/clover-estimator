@@ -14,6 +14,8 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? "/data",
   dryRun: bool(process.env.DRY_RUN, true), // default SAFE: never clicks Send
   recon: bool(process.env.RECON, false),
+  // Test lock: when set, real sending only happens for these emails/phones; everyone else gets a test run.
+  sendOnlyTo: (process.env.SEND_ONLY_TO ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
   // Headed Chrome in a virtual display on the server (Dockerfile runs xvfb-run). HEADLESS=true for local tests.
   headless: bool(process.env.HEADLESS, false),
   // On a Mac/PC: the merchant signs in with their own normal Chrome (nothing attached), the worker uses it after.

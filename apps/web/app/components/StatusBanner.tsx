@@ -45,6 +45,8 @@ export default function StatusBanner({ id, data, onRetry }: { id: string; data: 
       <div className="rounded-xl bg-green-50 p-4 text-green-900">
         <p className="font-semibold">{data.error?.startsWith("dry run") ? "Test run done (not sent to customer)" : "Sent ✓"}</p>
         {data.cloverEstimateNumber && <p className="text-sm">Clover estimate #{data.cloverEstimateNumber}</p>}
+        {data.error && !data.error.startsWith("dry run") && <p className="text-sm">{data.error}</p>}
+        {data.error?.includes("test lock") && <p className="text-sm">Test lock is on: only your test contacts get real estimates.</p>}
         {last && <a href={last} target="_blank" className="text-sm underline">See screenshot</a>}
       </div>
     );

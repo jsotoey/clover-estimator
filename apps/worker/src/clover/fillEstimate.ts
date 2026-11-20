@@ -461,6 +461,7 @@ export async function readTotalCents(page: Page): Promise<number | null> {
 }
 
 async function setDelivery(page: Page, e: Estimate) {
+  deliveryNote = null;
   const wantEmail = e.delivery === "email" || e.delivery === "both";
   const wantSms = e.delivery === "sms" || e.delivery === "both";
   // Real page (Nov 20): "Send estimate via email" (checked by default) and
@@ -470,10 +471,27 @@ async function setDelivery(page: Page, e: Estimate) {
   const smsUsable = !!sms && (await sms.isEnabled());
   const emailUsable = !!email && (await email.isEnabled());
   if (!email && !sms) throw new FillError("Could not find any delivery option on the send page");
-  if (smsUsable) await (wantSms ? sms!.check({ force: true }) : sms!.uncheck({ force: true }));
+  if (smsUsable) await setBox(page, sms!, wantSms, /send a link via sms/i);
+  const smsOn = smsUsable && (await sms!.isChecked().catch(() => false));
   // Keep email on whenever text can't go out, so the customer always gets it.
-  const keepEmail = wantEmail || !smsUsable;
-  if (emailUsable) await (keepEmail ? email!.check({ force: true }) : email!.uncheck({ force: true }));
+  const keepEmail = wantEmail || !smsOn;
+  if (emailUsable) await setBox(page, email!, keepEmail, /send estimate via email/i);
+  if (wantSms && !smsOn) {
+    deliveryNote = smsUsable ? "Clover didn't take the text option; sent by email" : "Clover has no phone for this customer; sent by email";
+    console.log(`[note] ${deliveryNote}`);
+  }
+}
+
+/** Notes about delivery for the last estimate (read by the caller). */
+export let deliveryNote: string | null = null;
+
+/** Tick or untick a checkbox; Clover's custom boxes sometimes need a click on their label instead. */
+async function setBox(page: Page, box: Locator, want: boolean, labelText: RegExp) {
+  if ((await box.isChecked().catch(() => !want)) === want) return;
+  await (want ? box.check({ force: true }) : box.uncheck({ force: true })).catch(() => {});
+  if ((await box.isChecked().catch(() => !want)) === want) return;
+  await page.getByText(labelText).first().click().catch(() => {});
+  await page.waitForTimeout(300);
 }
 
 async function findEstimateNumber(page: Page, customerName: string, totalCents: number): Promise<string | undefined> {

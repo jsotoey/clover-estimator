@@ -2,7 +2,7 @@ import { config } from "./config";
 import { ensureProfileForLogin } from "./session";
 import { newPage, saveSession } from "./browser";
 import { checkSession } from "./clover/session";
-import { FillError } from "./clover/fillEstimate";
+import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { fillEstimate } from "./clover/fillEstimate";
 import { addScreenshot, claimNext, db, logEvent, setStatus } from "./db";
@@ -32,6 +32,15 @@ async function handleLoginRequest(): Promise<boolean> {
   return true;
 }
 
+/** With the test lock on, only send when the customer's email or phone is on the list. */
+function allowedToSend(raw: unknown): boolean {
+  const e = raw as { customer: { email?: string; phone?: string } };
+  if (!config.sendOnlyTo.length) return true;
+  const email = e.customer.email?.trim().toLowerCase();
+  const phone = e.customer.phone?.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return config.sendOnlyTo.some((v) => v === email || (phone && v.replace(/\D/g, "") === phone));
+}
+
 /** Our own errors are already plain English; browser-tool errors get a short summary. */
 function friendlyError(e: unknown, msg: string): string {
   if (e instanceof FillError) return msg;
@@ -54,8 +63,9 @@ async function processEstimate() {
       return true;
     }
     await saveSession();
+    const locked = !config.dryRun && !allowedToSend(job.estimate);
     const res = await fillEstimate(page, job.estimate, job.computed, {
-      dryRun: config.dryRun,
+      dryRun: config.dryRun || locked,
       taxRate: config.taxRate,
       photoUrls: job.photo_urls,
       onStep: async (step, url) => {
@@ -64,7 +74,7 @@ async function processEstimate() {
       },
     });
     await saveSession();
-    await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: res.sent ? undefined : "dry run: not sent" });
+    await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: res.sent ? deliveryNote ?? undefined : locked ? "dry run: not sent (test lock: only sends to the test contacts)" : "dry run: not sent" });
     await logEvent(id, "done", { sent: res.sent, cloverTotalCents: res.cloverTotalCents, cloverNumber: res.cloverNumber });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -90,7 +100,7 @@ async function main() {
   if (ensureProfileForLogin(config.dataDir, config.cloverEmail())) {
     await logEvent(null, "login_changed", { note: "CLOVER_EMAIL changed; saved Clover session cleared" });
   }
-  console.log(`worker starting: dryRun=${config.dryRun} recon=${config.recon} headless=${config.headless}`);
+  console.log(`worker starting: dryRun=${config.dryRun} recon=${config.recon} headless=${config.headless}${config.sendOnlyTo.length ? ` testLock=${config.sendOnlyTo.join(",")}` : ""}`);
   // A sign-in that was open when the worker restarted can't continue; let the merchant start a fresh one.
   await db().query(
     `UPDATE clover_login SET status = 'failed', message = 'Interrupted by an app update. Tap Sign in to Clover again.', frame = NULL, finished_at = now(), updated_at = now() WHERE status = 'active'`
