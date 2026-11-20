@@ -8,6 +8,17 @@ import { capture } from "../browser";
  */
 const CODE_PROMPT = /verification code|enter (the )?code|security code|one-time|verify (it'?s|your)/i;
 
+async function waitForLoginOutcome(page: Page, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!/\/login/i.test(page.url())) return;
+    const text = (await page.locator("body").innerText().catch(() => "")) ?? "";
+    if (CODE_PROMPT.test(text)) return;
+    if (/incorrect|invalid|try again|doesn.t match/i.test(text)) return;
+    await page.waitForTimeout(1000);
+  }
+}
+
 export type LoginResult = { ok: true } | { ok: false; reason: string };
 
 export interface LoginHooks {
@@ -77,8 +88,8 @@ export async function ensureLoggedIn(page: Page, hooks: LoginHooks): Promise<Log
     page.getByRole("button", { name: /log ?in|sign ?in|continue/i }),
     page.locator('button[type="submit"]'),
   ]);
-  await page.waitForLoadState("networkidle").catch(() => {});
-  await page.waitForTimeout(2000);
+  // Clover's login spins ("Loading") for a while; wait up to 30s for it to leave /login or ask for a code.
+  await waitForLoginOutcome(page, 30_000);
   await step("after-submit");
 
   // Verification code (new device / new location).
@@ -104,5 +115,8 @@ export async function ensureLoggedIn(page: Page, hooks: LoginHooks): Promise<Log
 
   if (await isLoggedIn(page)) return { ok: true };
   const text = (await page.locator("body").innerText().catch(() => "")).slice(0, 300);
+  if (/incorrect|invalid|doesn.t match/i.test(text)) return { ok: false, reason: "Clover says the email or password is wrong. Check CLOVER_EMAIL / CLOVER_PASSWORD in Railway." };
+  if (/loading/i.test(text) && /recaptcha/i.test(text))
+    return { ok: false, reason: "Clover's login did not finish (stuck on Loading; the page is protected by reCAPTCHA). The server browser may be blocked from logging in." };
   return { ok: false, reason: `Still not signed in. Page says: ${text}` };
 }
