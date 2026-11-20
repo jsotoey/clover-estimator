@@ -13,7 +13,7 @@ db/schema.sql Postgres schema (applied automatically when the worker starts)
 - [x] Milestone 1: scaffold, schema, pricing + tests
 - [x] Milestone 2: worker login (with verification-code handoff) + RECON mode
 - [x] Milestone 3: web chat (Claude + submit_estimate tool), PIN, photos (HEIC→JPEG), review card, status banner with code entry
-- [ ] Milestone 4: fill the estimate (needs RECON output first)
+- [x] Milestone 4: fill the estimate (tested against a local replica of the Clover form; first real run still to confirm selectors)
 - [ ] Milestone 5: polish
 
 ## Deploy from your phone

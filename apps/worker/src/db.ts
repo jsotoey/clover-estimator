@@ -15,6 +15,7 @@ export interface EstimateRow {
   status: string;
   estimate: unknown;
   computed: unknown;
+  photo_urls: string[];
 }
 
 /** Claim one approved estimate atomically. */
@@ -23,7 +24,7 @@ export async function claimNext(): Promise<EstimateRow | null> {
     `UPDATE estimates SET status = 'sending', updated_at = now()
      WHERE id = (SELECT id FROM estimates WHERE status = 'approved'
                  ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1)
-     RETURNING id, status, estimate, computed`
+     RETURNING id, status, estimate, computed, photo_urls`
   );
   return rows[0] ?? null;
 }

@@ -71,9 +71,17 @@ async function main() {
         },
       });
       if (!login.ok) throw new Error(login.reason);
-      const res = await fillEstimate(page, job.estimate, job.computed, { dryRun: config.dryRun });
-      await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: config.dryRun ? "dry run: not sent" : undefined });
-      await logEvent(id, "done", { dryRun: config.dryRun });
+      const res = await fillEstimate(page, job.estimate, job.computed, {
+        dryRun: config.dryRun,
+        taxRate: config.taxRate,
+        photoUrls: job.photo_urls,
+        onStep: async (step, url) => {
+          await addScreenshot(id, url);
+          await logEvent(id, "fill_step", { step });
+        },
+      });
+      await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: res.sent ? undefined : "dry run: not sent" });
+      await logEvent(id, "done", { sent: res.sent, cloverTotalCents: res.cloverTotalCents, cloverNumber: res.cloverNumber });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await setStatus(id, "failed", { error: msg });
