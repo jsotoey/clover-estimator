@@ -1,4 +1,4 @@
-# Build context: repo root (see /railway.json). Browser version must match the playwright npm version.
+# Build context: repo root. Railway: RAILWAY_DOCKERFILE_PATH=apps/worker/Dockerfile. Browser version must match the playwright npm version.
 FROM mcr.microsoft.com/playwright:v1.65.1-noble
 WORKDIR /app
 RUN npm install -g pnpm@10.28.0
