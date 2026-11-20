@@ -3,7 +3,7 @@ import { EstimateSchema, priceEstimate, type Estimate, type PaymentProgram, type
 /** Tool definition sent to Claude. Mirrors prompts/estimate-assistant.md. */
 export const SUBMIT_ESTIMATE_TOOL = {
   name: "submit_estimate",
-  description: "Send the confirmed estimate to the app for math, review and Clover entry. Only call after the owner confirms the summary.",
+  description: "Put the estimate in front of the owner as a finished document (the app does the math). Call as soon as you have the customer name, email, the work and price, and the start date; use the standard terms for everything else. Call again after any change.",
   input_schema: {
     type: "object" as const,
     required: ["customer", "line_items", "service_date", "completion_date", "deposit_percent", "deposit_due_date", "expiration_date", "taxable", "delivery", "note"],
@@ -60,4 +60,28 @@ export function handleSubmitEstimate(
     depositPercent: e.deposit_percent,
   });
   return { ok: true, estimate: e, computed };
+}
+
+/** Tappable choices for one simple question. The owner's tap (or typed answer) comes back as the tool result. */
+export const ASK_OWNER_TOOL = {
+  name: "ask_owner",
+  description: "Ask the owner ONE simple choice question with 2-4 tappable options. Use date_picker for dates. Not for names, emails or prices.",
+  input_schema: {
+    type: "object" as const,
+    required: ["question", "options"],
+    properties: {
+      question: { type: "string", description: "Short, plain text" },
+      options: { type: "array", minItems: 2, maxItems: 4, items: { type: "string", maxLength: 30 } },
+      date_picker: { type: "boolean", description: "Also show a calendar to pick a date" },
+    },
+  },
+};
+
+export interface AskOwner { question: string; options: string[]; datePicker: boolean }
+
+export function parseAskOwner(input: unknown): AskOwner | null {
+  const i = input as { question?: unknown; options?: unknown; date_picker?: unknown };
+  if (typeof i?.question !== "string" || !Array.isArray(i.options)) return null;
+  const options = i.options.filter((o): o is string => typeof o === "string" && o.trim().length > 0).slice(0, 4);
+  return { question: i.question.trim(), options, datePicker: i.date_picker === true };
 }

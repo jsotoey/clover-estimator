@@ -23,8 +23,9 @@ export async function POST(req: Request) {
 
   try {
     const turn = await runChatTurn(e.conversation as MessageParam[], userContent);
-    // Any change after review sends it back to drafting until a new submit_estimate.
-    const status = turn.review ? "ready_for_review" : "drafting";
+    // A new estimate replaces the old one. A message that changes nothing (a question, "looks good")
+    // keeps the current estimate ready to approve; real changes come back as a new submit_estimate.
+    const status = turn.review || (e.status === "ready_for_review" && e.estimate) ? "ready_for_review" : "drafting";
     await db().query(
       `UPDATE estimates SET conversation = $2, status = $3,
          estimate = CASE WHEN $4::jsonb IS NULL THEN estimate ELSE $4::jsonb END,
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
        turn.review ? JSON.stringify(turn.review.estimate) : null,
        turn.review ? JSON.stringify(turn.review.computed) : null]
     );
-    return Response.json({ reply: turn.reply, review: turn.review, status });
+    return Response.json({ reply: turn.reply, review: turn.review, ask: turn.ask, status });
   } catch (err) {
     console.error(err);
     return Response.json({ error: "The assistant had a problem. Try again in a moment." }, { status: 502 });

@@ -7,9 +7,10 @@ import StatusBanner, { type StatusData } from "./StatusBanner";
 import { toCloverJpeg } from "@/lib/photos";
 
 type Msg = { role: "user" | "assistant"; text: string; photos?: string[] };
-const GREETING = "Hey! Tell me about the job: who it's for, what you're doing, and what you want to charge. Voice works too, just tap the mic on your keyboard.";
+type Ask = { question: string; options: string[]; datePicker: boolean };
+const GREETING = "Tell me about the job: the customer's name and email, the work, the price, and when you start. Talk or type, all in one go. I'll put the estimate together.";
 
-export default function EstimateApp() {
+export default function EstimateApp({ businessName, taxRate }: { businessName: string; taxRate: number }) {
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "assistant", text: GREETING }]);
   const [input, setInput] = useState("");
@@ -19,6 +20,8 @@ export default function EstimateApp() {
   const [review, setReview] = useState<{ estimate: Estimate; computed: PricingResult } | null>(null);
   const [status, setStatus] = useState<StatusData | null>(null);
   const [error, setError] = useState("");
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -71,13 +74,14 @@ export default function EstimateApp() {
     }
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if ((!text && !pendingPhotos) || busy) return;
     setBusy(true); setError("");
     const shownPhotos = photos.slice(photos.length - pendingPhotos);
     setMsgs((m) => [...m, { role: "user", text, photos: shownPhotos }]);
-    setInput("");
+    if (override === undefined) setInput("");
+    setAsk(null);
     try {
       const id = await ensureEstimate();
       const r = await fetch("/api/chat", {
@@ -88,7 +92,8 @@ export default function EstimateApp() {
       if (!r.ok) throw new Error(j.error ?? "Something went wrong");
       setPendingPhotos(0);
       if (j.reply) setMsgs((m) => [...m, { role: "assistant", text: j.reply }]);
-      setReview(j.review ?? null);
+      if (j.review) setReview(j.review); // otherwise the current estimate stays on screen
+      setAsk(j.ask ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -114,7 +119,7 @@ export default function EstimateApp() {
 
   function startOver() {
     setEstimateId(null); setMsgs([{ role: "assistant", text: GREETING }]); setPhotos([]);
-    setPendingPhotos(0); setReview(null); setStatus(null); setInput(""); setError("");
+    setPendingPhotos(0); setReview(null); setStatus(null); setInput(""); setError(""); setAsk(null);
   }
 
   const locked = !!status; // after approval the chat is read-only
@@ -140,10 +145,25 @@ export default function EstimateApp() {
             </div>
           </div>
         ))}
-        {busy && !status && <div className="text-sm text-neutral-400">…</div>}
+        {ask && !busy && !status && (
+          <div className="flex flex-wrap gap-2">
+            {ask.options.map((o) => (
+              <button key={o} onClick={() => send(o)} className="rounded-full border border-green-800 bg-white px-4 py-2 text-sm font-medium text-green-900">{o}</button>
+            ))}
+            {ask.datePicker && (
+              <label className="relative rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700">
+                Pick a date
+                <input type="date" className="absolute inset-0 opacity-0"
+                  onChange={(e) => { if (e.target.value) send(new Date(`${e.target.value}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })); }} />
+              </label>
+            )}
+          </div>
+        )}
+        {busy && !status && <div className="text-sm text-neutral-400">Working on it…</div>}
         {review && !status && (
           <ReviewCard estimate={review.estimate} computed={review.computed} photos={photos} busy={busy}
-            onApprove={approve} onChange={() => { setReview(null); setInput(""); }} />
+            businessName={businessName} taxRate={taxRate} onApprove={approve}
+            onEdit={(what) => { setInput(`Change the ${what.toLowerCase()}: `); inputRef.current?.focus(); }} />
         )}
         {status && estimateId && <StatusBanner id={estimateId} data={status} onRetry={retry} />}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -157,10 +177,10 @@ export default function EstimateApp() {
             <button onClick={() => fileRef.current?.click()} disabled={busy || photos.length >= CLOVER_LIMITS.maxAttachments}
               aria-label="Add photos" className="h-12 w-12 shrink-0 rounded-xl border border-neutral-300 text-xl disabled:opacity-40">📷</button>
             <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
-            <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={1} placeholder="Describe the job…"
+            <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} rows={1} placeholder={review ? "Tell me what to change…" : "Describe the job…"}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               className="max-h-32 min-h-12 flex-1 resize-none rounded-xl border border-neutral-300 px-3 py-3 text-base" />
-            <button onClick={send} disabled={busy || (!input.trim() && !pendingPhotos)}
+            <button onClick={() => send()} disabled={busy || (!input.trim() && !pendingPhotos)}
               className="h-12 shrink-0 rounded-xl bg-green-800 px-4 font-semibold text-white disabled:opacity-40">Send</button>
           </div>
         </div>

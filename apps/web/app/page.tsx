@@ -1,4 +1,5 @@
 import { isAuthed } from "@/lib/auth";
+import { env } from "@/lib/env";
 import PinScreen from "./components/PinScreen";
 import EstimateApp from "./components/EstimateApp";
 
@@ -14,5 +15,5 @@ export default async function Home() {
         <ul className="mt-3 list-disc pl-5 font-mono text-sm">{missing.map((m) => <li key={m}>{m}</li>)}</ul>
       </main>
     );
-  return (await isAuthed()) ? <EstimateApp /> : <PinScreen />;
+  return (await isAuthed()) ? <EstimateApp businessName={env.businessName()} taxRate={env.taxRate()} /> : <PinScreen />;
 }

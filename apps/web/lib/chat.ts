@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, ContentBlockParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { env } from "./env";
 import { SYSTEM_PROMPT } from "./systemPrompt.generated";
-import { SUBMIT_ESTIMATE_TOOL, handleSubmitEstimate } from "./estimateTool";
+import { ASK_OWNER_TOOL, SUBMIT_ESTIMATE_TOOL, handleSubmitEstimate, parseAskOwner, type AskOwner } from "./estimateTool";
 import type { Estimate, PricingResult } from "@ce/core";
 
 function todayNY(): string {
@@ -12,20 +12,56 @@ function weekdayNY(): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" }).format(new Date());
 }
 
+export function buildSystemPrompt(): string {
+  const t = env.terms();
+  const prompt = SYSTEM_PROMPT
+    .replaceAll("{{DEPOSIT}}", String(t.depositPercent))
+    .replaceAll("{{VALID_DAYS}}", String(t.validDays))
+    .replaceAll("{{TAX}}", t.taxable ? "yes, the business's sales tax applies" : "no");
+  return `${prompt}\n\nToday is ${weekdayNY()}, ${todayNY()} (America/New_York). Use this to resolve dates like "Saturday" or "30 days".`;
+}
+
+/** Remove markdown the model may still produce, so the chat reads as plain text. */
+export function plain(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^\s*[-*]\s+/gm, "").replace(/^#+\s*/gm, "").trim();
+}
+
 export interface ChatTurnResult {
   conversation: MessageParam[];
   reply: string;
   review: { estimate: Estimate; computed: PricingResult } | null;
+  ask: AskOwner | null;
+}
+
+type ToolUse = { type: "tool_use"; id: string; name: string; input: unknown };
+
+/**
+ * The owner's message answers any tool calls left open from the last turn (an ask_owner question).
+ * The API needs every tool_use answered by a tool_result in the next user message.
+ */
+export function withOpenToolResults(conversation: MessageParam[], userContent: ContentBlockParam[]): ContentBlockParam[] {
+  const last = conversation[conversation.length - 1];
+  if (!last || last.role !== "assistant" || !Array.isArray(last.content)) return userContent;
+  const open = (last.content as ContentBlockParam[]).filter((b): b is ToolUse & ContentBlockParam => b.type === "tool_use");
+  if (open.length === 0) return userContent;
+  const answer = userContent.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
+  const results: ToolResultBlockParam[] = open.map((t) => ({
+    type: "tool_result",
+    tool_use_id: t.id,
+    content: t.name === "ask_owner" ? `Owner's answer: ${answer}` : "Shown to the owner.",
+  }));
+  return [...results, ...userContent.filter((b) => b.type !== "text"), ...(open.some((t) => t.name === "ask_owner") ? [] : userContent.filter((b) => b.type === "text"))];
 }
 
 /**
- * One merchant message in, one assistant reply out.
- * If Claude calls submit_estimate, validate + price it in code; on bad input, hand the error back to Claude (max 3 tries).
+ * One owner message in, one assistant reply out.
+ * submit_estimate: validated and priced in code (bad input goes back to Claude, max 3 tries).
+ * ask_owner: ends the turn; the app shows the question with tappable choices.
  */
 export async function runChatTurn(conversation: MessageParam[], userContent: ContentBlockParam[]): Promise<ChatTurnResult> {
   const client = new Anthropic({ apiKey: env.anthropicKey() });
-  const system = `${SYSTEM_PROMPT}\n\nToday is ${weekdayNY()}, ${todayNY()} (America/New_York). Use this to resolve dates like "Saturday" or "30 days".`;
-  const convo: MessageParam[] = [...conversation, { role: "user", content: userContent }];
+  const system = buildSystemPrompt();
+  const convo: MessageParam[] = [...conversation, { role: "user", content: withOpenToolResults(conversation, userContent) }];
   let review: ChatTurnResult["review"] = null;
 
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -33,29 +69,46 @@ export async function runChatTurn(conversation: MessageParam[], userContent: Con
       model: env.model,
       max_tokens: 1024,
       system,
-      tools: [SUBMIT_ESTIMATE_TOOL],
+      tools: [SUBMIT_ESTIMATE_TOOL, ASK_OWNER_TOOL],
       messages: convo,
     });
     convo.push({ role: "assistant", content: res.content as ContentBlockParam[] });
 
-    const toolUses = res.content.filter((b) => b.type === "tool_use");
-    const text = res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n").trim();
+    const toolUses = res.content.filter((b) => b.type === "tool_use") as unknown as ToolUse[];
+    const text = plain(res.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n"));
 
-    if (toolUses.length === 0) return { conversation: convo, reply: text, review };
+    if (toolUses.length === 0) return { conversation: convo, reply: text, review, ask: null };
 
-    const results: ToolResultBlockParam[] = toolUses.map((tu) => {
-      const t = tu as { id: string; name: string; input: unknown };
-      if (t.name !== "submit_estimate") return { type: "tool_result", tool_use_id: t.id, is_error: true, content: "Unknown tool" };
+    // Price any estimate now, even if a question is also being asked.
+    const results: ToolResultBlockParam[] = [];
+    let ask: AskOwner | null = null;
+    for (const t of toolUses) {
+      if (t.name === "ask_owner") {
+        ask = parseAskOwner(t.input);
+        continue;
+      }
+      if (t.name !== "submit_estimate") {
+        results.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: "Unknown tool" });
+        continue;
+      }
       const outcome = handleSubmitEstimate(t.input, { taxRate: env.taxRate(), paymentProgram: env.paymentProgram() });
-      if (!outcome.ok) return { type: "tool_result", tool_use_id: t.id, is_error: true, content: outcome.error };
+      if (!outcome.ok) {
+        results.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: outcome.error });
+        continue;
+      }
       review = { estimate: outcome.estimate, computed: outcome.computed };
-      return {
+      results.push({
         type: "tool_result",
         tool_use_id: t.id,
-        content: "Saved. The app is now showing the owner a review card with the final math. Tell them in one short line to check it and tap Approve and send, or tell you what to change. Do not repeat the numbers.",
-      };
-    });
+        content: "The owner now sees the finished estimate with Approve and Change buttons. Reply with one short plain sentence (for example: \"Here's the estimate. Tap Approve to send it, or tell me what to change.\"). Do not repeat any details or numbers.",
+      });
+    }
+
+    if (ask) {
+      // Leave every tool call open; the owner's next message answers them (see withOpenToolResults).
+      return { conversation: convo, reply: plain(!text || text.includes(ask.question) ? text || ask.question : `${text}\n${ask.question}`), review, ask };
+    }
     convo.push({ role: "user", content: results });
   }
-  return { conversation: convo, reply: "Sorry, I got stuck. Can you say that again?", review };
+  return { conversation: convo, reply: "Sorry, I got stuck. Can you say that again?", review, ask: null };
 }
