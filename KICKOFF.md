@@ -7,9 +7,9 @@ Only Jon can do these, from his phone (no laptop needed). Claude Code cannot cre
 - [ ] Make this repo **private** (GitHub → Settings → General → Danger Zone → Change visibility).
 - [ ] Anthropic Console: create an API key and add credit.
 - [ ] Railway: new project → add **Postgres** → copy its public `DATABASE_URL`.
-- [ ] Vercel: Storage → create a **Blob** store → copy `BLOB_READ_WRITE_TOKEN`.
+- [x] (Update Nov 19) Hosting moved to Railway only; photos/screenshots stored in Postgres. No Vercel or Blob needed.
 - [ ] Clover login: for testing, use one of Jon's own emails added as an employee on M&J's Clover account (with access to estimates). Swap to a dedicated bot login later by changing `CLOVER_EMAIL` / `CLOVER_PASSWORD` in Railway; the worker resets its saved session automatically.
-- [ ] After milestones 1–2 are merged: Vercel → import repo, root `apps/web`, add the web env vars. Railway → new service from the repo, root `apps/worker`, volume at `/data`, add the worker env vars, `RECON=true`.
+- [x] Deployed on Railway (project "insightful-manifestation"): Postgres, worker (`apps/worker/Dockerfile`, volume `/data`), web (`apps/web/Dockerfile`). Each service sets `RAILWAY_DOCKERFILE_PATH`.
 
 Claude Code: do the milestones below. In the README, write the deploy steps above as tap-by-tap instructions Jon can follow on his phone.
 
@@ -79,5 +79,5 @@ A mobile-first web app for a field-service merchant (first user: M&J Painting an
 - Keep the UI simple and fast on an iPhone. No extra features.
 
 ## Env vars
-**Vercel (apps/web):** `ANTHROPIC_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `MERCHANT_PIN`, `MERCHANT_TAX_RATE`, `PAYMENT_PROGRAM`
-**Railway (apps/worker):** `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `CLOVER_EMAIL`, `CLOVER_PASSWORD`, `DRY_RUN=true`, `RECON=false`
+**Railway web service (apps/web):** `ANTHROPIC_API_KEY`, `DATABASE_URL`, `MERCHANT_PIN`, `MERCHANT_TAX_RATE`, `PAYMENT_PROGRAM`
+**Railway worker (apps/worker):** `DATABASE_URL`, `MERCHANT_TAX_RATE`, `CLOVER_EMAIL`, `CLOVER_PASSWORD`, `DRY_RUN=true`, `RECON=false`
