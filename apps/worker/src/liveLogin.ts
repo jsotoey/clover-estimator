@@ -1,7 +1,8 @@
 import type { Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
-import { newPage, saveSession, VIEWPORT } from "./browser";
+import { spawn } from "node:child_process";
+import { closeContext, clearProfileLock, forgetSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -148,6 +149,11 @@ export async function runLiveLogin(id: number): Promise<boolean> {
       await logEvent(null, "login_done", { loginId: id, seconds: 0, already: true });
       return true;
     }
+    if (config.localSignin) {
+      await page.close().catch(() => {});
+      page = null;
+      return await runLocalSignin(id, started);
+    }
     await page.goto(config.cloverLoginUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForTimeout(1500);
     await prefillCredentials(page);
@@ -184,5 +190,56 @@ export async function runLiveLogin(id: number): Promise<boolean> {
     return false;
   } finally {
     await page?.close().catch(() => {});
+  }
+}
+
+export const LOCAL_SIGNIN_MESSAGE =
+  "Sign in on the Mac: a normal Chrome window opened there. Log in like you always do (tick Remember this browser), then tap I'm signed in here.";
+
+/**
+ * Sign-in with the merchant's own, ordinary Google Chrome (no automation attached), on the worker's profile.
+ * The worker's browser is closed meanwhile; afterwards it reopens the same profile and uses the sign-in.
+ */
+async function runLocalSignin(id: number, started: number): Promise<boolean> {
+  const dir = workerProfileDir();
+  await closeContext();
+  clearProfileLock(dir);
+  const chrome = spawn(config.chromeApp, [
+    `--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--new-window", config.cloverLoginUrl,
+  ], { stdio: "ignore" });
+  let exited = false;
+  chrome.on("exit", () => (exited = true));
+  chrome.on("error", () => (exited = true));
+  await setLogin(id, { message: LOCAL_SIGNIN_MESSAGE, frame: null });
+
+  while (!exited && Date.now() - started < config.liveLoginTimeoutMs) {
+    if (await cancelled(id)) { chrome.kill("SIGTERM"); return false; }
+    const done = await db().query(
+      `DELETE FROM clover_login_input WHERE login_id = $1 AND kind = 'key' AND text = 'SigninDone' RETURNING id`, [id]
+    );
+    if (done.rowCount) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (!exited) {
+    chrome.kill("SIGTERM"); // Chrome saves its cookies when asked to quit
+    for (let i = 0; i < 20 && !exited; i++) await new Promise((r) => setTimeout(r, 500));
+  }
+  await new Promise((r) => setTimeout(r, 1000));
+
+  forgetSavedSession(); // the profile itself now holds the fresh sign-in
+  const page = await newPage();
+  try {
+    if (await checkSession(page)) {
+      await saveSession();
+      const seconds = Math.round((Date.now() - started) / 1000);
+      await setLogin(id, { status: "done", message: "Connected to Clover.", frame: null });
+      await logEvent(null, "login_done", { loginId: id, seconds, local: true });
+      return true;
+    }
+    await setLogin(id, { status: "failed", message: "Clover still shows the login page. Tap Sign in to Clover to try again.", frame: null });
+    await logEvent(null, "login_failed", { loginId: id, local: true });
+    return false;
+  } finally {
+    await page.close().catch(() => {});
   }
 }

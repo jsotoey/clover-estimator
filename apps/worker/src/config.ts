@@ -16,6 +16,10 @@ export const config = {
   recon: bool(process.env.RECON, false),
   // Headed Chrome in a virtual display on the server (Dockerfile runs xvfb-run). HEADLESS=true for local tests.
   headless: bool(process.env.HEADLESS, false),
+  // On a Mac/PC: the merchant signs in with their own normal Chrome (nothing attached), the worker uses it after.
+  localSignin: bool(process.env.LOCAL_SIGNIN, false),
+  chromeChannel: process.env.CHROME_CHANNEL || undefined, // "chrome" = the installed Google Chrome
+  chromeApp: process.env.CHROME_APP ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   liveLoginTimeoutMs: 30 * 60 * 1000, // time to finish a sign-in from the phone
   taxRate: process.env.MERCHANT_TAX_RATE ? Number(process.env.MERCHANT_TAX_RATE) : undefined,
   pollMs: Number(process.env.POLL_INTERVAL_MS ?? 5000),

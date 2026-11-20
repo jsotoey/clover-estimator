@@ -16,6 +16,11 @@ let shared: Promise<BrowserContext> | null = null;
  */
 const cookieFile = () => path.join(config.dataDir, "clover-cookies.json");
 
+/** Forget the saved copy (e.g. before using a fresh sign-in done in normal Chrome, so old cookies don't overwrite it). */
+export function forgetSavedSession() {
+  fs.rmSync(cookieFile(), { force: true });
+}
+
 export async function saveSession(ctx?: BrowserContext): Promise<void> {
   try {
     const c = ctx ?? (await getContext());
@@ -49,13 +54,14 @@ export function getContext(): Promise<BrowserContext> {
   if (!shared) {
     // The worker is the only Chrome using this profile. A redeploy can leave Chrome's lock files behind
     // (from the old container), which makes Chrome refuse to start, so clear them first.
-    const dir = profileDir(config.dataDir);
-    for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
-      try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* not there */ }
-    }
+    const dir = workerProfileDir();
+    fs.mkdirSync(dir, { recursive: true });
+    clearProfileLock(dir);
     shared = chromium
       .launchPersistentContext(dir, {
         headless: config.headless,
+        // With the installed Google Chrome, use the Mac's real keychain so a sign-in done in normal Chrome carries over.
+        ...(config.chromeChannel ? { channel: config.chromeChannel, ignoreDefaultArgs: ["--use-mock-keychain"] } : {}),
         executablePath: process.env.CHROME_PATH || undefined,
         viewport: VIEWPORT,
         // Keep the default 1x scale: at 2x, Google's robot-check frame renders at half size in screenshots.
@@ -73,6 +79,24 @@ export function getContext(): Promise<BrowserContext> {
       });
   }
   return shared;
+}
+
+/** The installed Google Chrome gets its own profile folder (it can't open one made by a newer test Chromium). */
+export function workerProfileDir(): string {
+  return profileDir(config.dataDir) + (config.chromeChannel ? "-chrome" : "");
+}
+
+export function clearProfileLock(dir: string) {
+  for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* not there */ }
+  }
+}
+
+/** Close the worker's browser (e.g. so the merchant can use the same profile in normal Chrome). */
+export async function closeContext(): Promise<void> {
+  const c = shared;
+  shared = null;
+  if (c) await (await c.catch(() => null))?.close().catch(() => {});
 }
 
 /** Kept for RECON and tests. */

@@ -38,6 +38,12 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "Saved to $ENV_FILE (only your user can read it)."
 fi
 
+# Sign in with the Mac's own Google Chrome (nothing attached to it); the worker uses that sign-in afterwards.
+if ! grep -q '^LOCAL_SIGNIN=' "$ENV_FILE"; then printf 'LOCAL_SIGNIN=true\nCHROME_CHANNEL=chrome\n' >> "$ENV_FILE"; fi
+if [ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+  echo "Google Chrome is needed in Applications (install from google.com/chrome), then run this again."; exit 1
+fi
+
 set -a; source "$ENV_FILE"; set +a
 mkdir -p "$DATA_DIR"
 
@@ -47,6 +53,6 @@ npx -y pnpm@10.28.0 --filter worker exec playwright install chromium
 npx -y pnpm@10.28.0 --filter worker migrate
 
 echo
-echo "Worker running. A Chrome window will open when Clover needs a sign-in: sign in there (or from the app's Clover page)."
+echo "Worker running. When Clover needs a sign-in, a normal Chrome window opens here: log in there, then tap I'm signed in in the app."
 echo "Leave this window open. Your Mac will stay awake while it runs. Press Ctrl+C to stop."
 exec caffeinate -i npx -y pnpm@10.28.0 --filter worker start

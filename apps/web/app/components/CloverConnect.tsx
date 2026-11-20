@@ -115,7 +115,23 @@ export default function CloverConnect() {
         </div>
       )}
 
-      {live && (
+      {live && current?.message?.startsWith("Sign in on the Mac") && (
+        <div className="mt-3 rounded-2xl border border-neutral-200 bg-white p-5">
+          <p className="text-lg font-semibold">Sign in on your Mac</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-neutral-700">
+            <li>A normal Chrome window opened on the Mac with Clover's login.</li>
+            <li>Log in like you always do and enter the code Clover texts you.</li>
+            <li>Tick &ldquo;Remember this browser&rdquo; if Clover offers it.</li>
+            <li>Once you see Clover&apos;s dashboard, tap the button below.</li>
+          </ol>
+          <button onClick={() => enqueue({ kind: "key", text: "SigninDone" })}
+            className="mt-4 w-full rounded-xl bg-green-800 py-3.5 text-base font-semibold text-white">I&apos;m signed in</button>
+          <button onClick={async () => { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); }}
+            className="mt-2 w-full py-2 text-sm text-neutral-500 underline">Cancel</button>
+        </div>
+      )}
+
+      {live && !current?.message?.startsWith("Sign in on the Mac") && (
         <div className="mt-3">
           <p className="text-sm text-blue-900">
             {current?.status === "requested" ? "Opening Clover… (a few seconds)" : current?.message ?? "Tap the picture to click."}

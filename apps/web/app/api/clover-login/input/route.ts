@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     await db().query(`INSERT INTO clover_login_input (login_id, kind, x, y) VALUES ($1, 'click', $2, $3)`, [rows[0].id, b.x, b.y]);
   } else if (b.kind === "type" && typeof b.text === "string" && b.text.length > 0 && b.text.length <= 200) {
     await db().query(`INSERT INTO clover_login_input (login_id, kind, text) VALUES ($1, 'type', $2)`, [rows[0].id, b.text]);
-  } else if (b.kind === "key" && /^(Enter|Tab|Backspace|Escape)$/.test(b.text ?? "")) {
+  } else if (b.kind === "key" && /^(Enter|Tab|Backspace|Escape|SigninDone)$/.test(b.text ?? "")) {
     await db().query(`INSERT INTO clover_login_input (login_id, kind, text) VALUES ($1, 'key', $2)`, [rows[0].id, b.text]);
   } else {
     return Response.json({ error: "Bad input" }, { status: 400 });
