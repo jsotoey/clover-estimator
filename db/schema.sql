@@ -30,3 +30,6 @@ CREATE TABLE IF NOT EXISTS events (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS events_estimate_idx ON events (estimate_id, created_at);
+
+-- Milestone 3: photos are tracked by the server, not by the AI.
+ALTER TABLE estimates ADD COLUMN IF NOT EXISTS photo_urls text[] NOT NULL DEFAULT '{}';

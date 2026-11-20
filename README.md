@@ -12,7 +12,7 @@ db/schema.sql Postgres schema (applied automatically when the worker starts)
 ## Status
 - [x] Milestone 1: scaffold, schema, pricing + tests
 - [x] Milestone 2: worker login (with verification-code handoff) + RECON mode
-- [ ] Milestone 3: web chat, photos, review card
+- [x] Milestone 3: web chat (Claude + submit_estimate tool), PIN, photos (HEIC→JPEG), review card, status banner with code entry
 - [ ] Milestone 4: fill the estimate (needs RECON output first)
 - [ ] Milestone 5: polish
 
@@ -37,12 +37,12 @@ db/schema.sql Postgres schema (applied automatically when the worker starts)
 4. Deploy. Open **Deployments → View logs**. Every `[capture]` line is a screenshot URL.
 
 ### 4. If Clover asks for a verification code
-The logs show `needs_code`. Until the web app has its code box (milestone 3), enter it from Railway: Postgres → **Data** → `verification_codes` → **+ Row**, `code` = the 6 digits (leave the other fields blank). The worker picks it up within a few seconds and asks Clover to remember the device.
+The web app shows a code box on the estimate's status banner. During RECON (no estimate yet), enter it from Railway instead: Postgres → **Data** → `verification_codes` → **+ Row**, `code` = the 6 digits (leave the other fields blank). The worker picks it up within a few seconds and asks Clover to remember the device.
 
 ### 5. After RECON
 Paste the RECON screenshot / `.aria.yaml` URLs from the logs into the Claude Code session so it can write the real estimate-form selectors (milestone 4). Then set `RECON=false`.
 
-### 6. Vercel: the web app (after milestone 3)
+### 6. Vercel: the web app
 vercel.com → **Add New → Project** → `clover-estimator` → Root Directory `apps/web` → env vars: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `MERCHANT_PIN`, `MERCHANT_TAX_RATE`, `PAYMENT_PROGRAM`.
 
 ## Changing the Clover login
