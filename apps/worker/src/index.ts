@@ -2,6 +2,7 @@ import { config } from "./config";
 import { ensureProfileForLogin } from "./session";
 import { newPage, saveSession } from "./browser";
 import { checkSession } from "./clover/session";
+import { FillError } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { fillEstimate } from "./clover/fillEstimate";
 import { addScreenshot, claimNext, db, logEvent, setStatus } from "./db";
@@ -29,6 +30,13 @@ async function handleLoginRequest(): Promise<boolean> {
     await releaseWaitingEstimates();
   }
   return true;
+}
+
+/** Our own errors are already plain English; browser-tool errors get a short summary. */
+function friendlyError(e: unknown, msg: string): string {
+  if (e instanceof FillError) return msg;
+  if (/timeout/i.test(msg)) return "Clover didn't respond the way we expected (a button or field didn't show up in time). See the screenshot.";
+  return "Something went wrong filling in Clover. See the screenshot, then tap Try again.";
 }
 
 async function processEstimate() {
@@ -60,8 +68,8 @@ async function processEstimate() {
     await logEvent(id, "done", { sent: res.sent, cloverTotalCents: res.cloverTotalCents, cloverNumber: res.cloverNumber });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await setStatus(id, "failed", { error: msg });
-    await logEvent(id, "failed", { error: msg });
+    await logEvent(id, "failed", { error: msg }); // full detail for us
+    await setStatus(id, "failed", { error: friendlyError(e, msg) }); // short version for the phone
   } finally {
     await page.close().catch(() => {});
   }

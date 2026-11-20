@@ -60,6 +60,7 @@ export function getContext(): Promise<BrowserContext> {
     const dir = workerProfileDir();
     fs.mkdirSync(dir, { recursive: true });
     clearProfileLock(dir);
+    quietChromePrompts(dir);
     shared = chromium
       .launchPersistentContext(dir, {
         headless: config.headless,
@@ -87,6 +88,19 @@ export function getContext(): Promise<BrowserContext> {
 /** The installed Google Chrome gets its own profile folder (it can't open one made by a newer test Chromium). */
 export function workerProfileDir(): string {
   return profileDir(config.dataDir) + (config.chromeChannel ? "-chrome" : "");
+}
+
+/** Turn off Chrome's own "Save address?" / "Save card?" / "Save password?" offers in the worker's profile. */
+export function quietChromePrompts(dir: string) {
+  try {
+    const file = path.join(dir, "Default", "Preferences");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const prefs = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+    prefs.autofill = { ...(prefs.autofill ?? {}), profile_enabled: false, credit_card_enabled: false };
+    prefs.credentials_enable_service = false;
+    prefs.profile = { ...(prefs.profile ?? {}), password_manager_enabled: false };
+    fs.writeFileSync(file, JSON.stringify(prefs));
+  } catch { /* not critical */ }
 }
 
 export function clearProfileLock(dir: string) {

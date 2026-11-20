@@ -138,6 +138,13 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
     page.getByRole("button", { name: /^preview$/i }),
     page.getByRole("button", { name: /review\s*&?\s*(and\s*)?send/i }),
   ], '"Preview"');
+  if (!(await review.isEnabled().catch(() => false))) {
+    // Clover greys out Preview while something on the form is flagged; say what it is.
+    const msgs = await page.locator('[role="alert"], [aria-live] , [class*="error" i]')
+      .filter({ hasText: /\S/ }).allInnerTexts().catch(() => [] as string[]);
+    const said = [...new Set(msgs.map((m) => m.trim()).filter((m) => m && m.length < 120))].slice(0, 3);
+    throw new FillError(said.length ? `Clover won't continue yet. It says: ${said.join("; ")}` : "Clover won't continue yet: a field on the form is still flagged. See the screenshot.");
+  }
   await review.click();
   await page.waitForLoadState("networkidle").catch(() => {});
   await setDelivery(page, estimate);
@@ -305,29 +312,61 @@ async function chooseValue(page: Page, label: RegExp, values: string[]) {
   }
 }
 
-async function setDate(page: Page, label: RegExp, iso: string, required: boolean) {
+export async function setDate(page: Page, label: RegExp, iso: string, required: boolean): Promise<string | null> {
   const input = await firstVisible([page.getByLabel(label)], 3000);
   if (!input) {
     if (required) throw new FillError(`Could not find the ${label.source} field`);
-    return; // optional; dates are also in the note
+    return null; // optional; dates are also in the note
   }
   const tag = await input.evaluate((el) => (el as HTMLElement).tagName.toLowerCase()).catch(() => "");
   const type = await input.getAttribute("type").catch(() => null);
-  try {
-    if (tag === "input" && type === "date") await input.fill(iso);
-    else if (tag === "input") {
-      await input.click();
-      await input.fill("");
-      await input.pressSequentially(toUSDate(iso), { delay: 30 });
-      await input.press("Tab").catch(() => {});
+
+  // Clover can reject a typed date ("Enter a valid date"). Try typing it two ways; for the expiration date,
+  // fall back to slightly earlier dates (it may cap how far out an estimate can be valid).
+  const candidates = required ? [iso, addDays(iso, -1), addDays(todayIso(), 29), addDays(todayIso(), 14)] : [iso];
+  for (const d of candidates) {
+    for (const style of ["slashes", "digits"] as const) {
+      try {
+        if (tag === "input" && type === "date") await input.fill(d);
+        else {
+          await input.click();
+          await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => {});
+          await input.press("Backspace").catch(() => {});
+          await input.fill("").catch(() => {});
+          const us = toUSDate(d);
+          await input.pressSequentially(style === "slashes" ? us : us.replace(/\D/g, ""), { delay: 40 });
+          await input.press("Tab").catch(() => {});
+        }
+      } catch { continue; }
+      await page.waitForTimeout(400);
+      const v = await input.inputValue().catch(() => "");
+      const matches = v.replace(/\D/g, "") === toUSDate(d).replace(/\D/g, "");
+      if (matches && !(await dateErrorShown(input))) {
+        if (d !== iso) console.log(`[note] ${label.source}: Clover rejected ${toUSDate(iso)}, used ${toUSDate(d)}`);
+        return d;
+      }
     }
-  } catch (e) {
-    if (required) throw new FillError(`Could not set ${label.source}: ${(e as Error).message}`);
   }
-  if (required) {
-    const v = await input.inputValue().catch(() => "");
-    if (v.replace(/\D/g, "") !== toUSDate(iso).replace(/\D/g, "")) throw new FillError(`${label.source} did not take the value ${toUSDate(iso)} (shows "${v}")`);
-  }
+  if (required) throw new FillError(`Clover rejected the ${label.source} (it says "Enter a valid date" for ${toUSDate(iso)}).`);
+  return null;
+}
+
+/** Is Clover showing a date error under this field? */
+async function dateErrorShown(input: Locator): Promise<boolean> {
+  const invalid = await input.getAttribute("aria-invalid").catch(() => null);
+  if (invalid === "true") return true;
+  const box = input.locator("xpath=ancestor::*[self::div or self::fieldset][3]");
+  return box.getByText(/enter a valid date|invalid date/i).first().isVisible().catch(() => false);
+}
+
+function todayIso(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+}
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 async function addCustomItem(page: Page, name: string, priceCents: number, taxable: boolean, taxRate?: number) {

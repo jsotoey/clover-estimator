@@ -2,7 +2,7 @@ import { chromium, type Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
 import { spawn } from "node:child_process";
-import { closeContext, clearProfileLock, forgetSavedSession, writeSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
+import { closeContext, clearProfileLock, quietChromePrompts, forgetSavedSession, writeSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -206,6 +206,7 @@ async function runLocalSignin(id: number, started: number): Promise<boolean> {
   const dir = workerProfileDir();
   await closeContext();
   clearProfileLock(dir);
+  quietChromePrompts(dir);
   // Plain Chrome, nothing attached while you sign in. The local-only debug port lets the worker copy the
   // sign-in out of this window afterwards (Clover keeps it in cookies that Chrome drops when it closes).
   const chrome = spawn(config.chromeApp, [
