@@ -45,3 +45,32 @@ CREATE TABLE IF NOT EXISTS files (
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS files_estimate_idx ON files (estimate_id, kind, created_at);
+
+-- Human-assisted Clover sign-in (live view). A person signs in through the app; the worker keeps the session.
+ALTER TABLE estimates DROP CONSTRAINT IF EXISTS estimates_status_check;
+ALTER TABLE estimates ADD CONSTRAINT estimates_status_check
+  CHECK (status IN ('drafting','ready_for_review','approved','sending','needs_code','needs_login','sent','failed'));
+
+CREATE TABLE IF NOT EXISTS clover_login (
+  id          bigserial PRIMARY KEY,
+  status      text NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','active','done','failed','cancelled')),
+  reason      text,                 -- why it was needed: 'estimate', 'manual'
+  frame       bytea,                -- latest JPEG of the worker's browser (cleared when done)
+  frame_at    timestamptz,
+  message     text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS clover_login_status_idx ON clover_login (status, created_at);
+
+-- Taps and typing from the phone; deleted as soon as the worker applies them.
+CREATE TABLE IF NOT EXISTS clover_login_input (
+  id         bigserial PRIMARY KEY,
+  login_id   bigint NOT NULL REFERENCES clover_login(id) ON DELETE CASCADE,
+  kind       text NOT NULL CHECK (kind IN ('click','type','key')),
+  x          real,
+  y          real,
+  text       text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);

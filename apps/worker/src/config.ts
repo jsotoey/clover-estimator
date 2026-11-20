@@ -14,6 +14,9 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? "/data",
   dryRun: bool(process.env.DRY_RUN, true), // default SAFE: never clicks Send
   recon: bool(process.env.RECON, false),
+  // Headed Chrome in a virtual display on the server (Dockerfile runs xvfb-run). HEADLESS=true for local tests.
+  headless: bool(process.env.HEADLESS, false),
+  liveLoginTimeoutMs: 15 * 60 * 1000,
   taxRate: process.env.MERCHANT_TAX_RATE ? Number(process.env.MERCHANT_TAX_RATE) : undefined,
   pollMs: Number(process.env.POLL_INTERVAL_MS ?? 5000),
   codeWaitMs: 10 * 60 * 1000,

@@ -13,6 +13,15 @@ export default function StatusBanner({ id, data, onRetry }: { id: string; data: 
   if (data.status === "approved" || data.status === "sending")
     return <div className="rounded-xl bg-blue-50 p-4 text-blue-900">Putting it into Clover… this takes about a minute.</div>;
 
+  if (data.status === "needs_login")
+    return (
+      <div className="rounded-xl bg-amber-50 p-4 text-amber-900">
+        <p className="font-semibold">Clover needs you to sign in</p>
+        <p className="text-sm">Your estimate is saved and will send right after.</p>
+        <a href="/clover" className="mt-2 inline-block rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white">Sign in to Clover</a>
+      </div>
+    );
+
   if (data.status === "needs_code")
     return (
       <div className="rounded-xl bg-amber-50 p-4 text-amber-900">

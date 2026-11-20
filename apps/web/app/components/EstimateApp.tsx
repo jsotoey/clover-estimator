@@ -123,7 +123,10 @@ export default function EstimateApp() {
     <main className="mx-auto flex h-dvh max-w-md flex-col">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
         <h1 className="text-lg font-semibold">New estimate</h1>
-        <button onClick={startOver} className="text-sm font-medium text-green-800">+ New</button>
+        <div className="flex gap-4">
+          <a href="/clover" className="text-sm font-medium text-neutral-600">Clover</a>
+          <button onClick={startOver} className="text-sm font-medium text-green-800">+ New</button>
+        </div>
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">

@@ -26,6 +26,9 @@ One Railway project ("insightful-manifestation") with three services: **Postgres
 
 Adding a variable redeploys the service on its own (tap **Deploy** if Railway shows a staged change).
 
+### Signing in to Clover (Connect Clover)
+Clover's login is protected by reCAPTCHA and asks for codes, so a person signs in, not the server. Open the app → **Clover** (top right) → **Sign in to Clover**. You'll see the worker's browser live: the email and password are already filled in, so tap **Log in** on the picture, type the code in the box, and tap **Enter**. The worker keeps that session. When Clover signs it out, estimates wait as "Clover needs you to sign in" and send automatically right after you do. The Clover screen keeps a sign-in history so you can see how often it happens.
+
 ### If Clover asks for a verification code
 During an estimate, the app shows a code box. During RECON (no estimate yet): Railway → **Postgres → Data → verification_codes → + Row**, `code` = the digits. The worker picks it up within a few seconds and asks Clover to remember the device.
 
