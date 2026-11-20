@@ -64,8 +64,8 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
     setAsk(null); setError(""); setInput("");
     const who = d.estimate?.customer?.name ?? "this customer";
     setMsgs([{ role: "assistant", text: `Estimate for ${who}${d.cloverEstimateNumber ? ` (Clover #${d.cloverEstimateNumber})` : ""}.` }]);
-    if (d.estimate && d.computed && ["ready_for_review", "drafting"].includes(d.status)) setReview({ estimate: d.estimate, computed: d.computed });
-    else setReview(null);
+    // Show the estimate itself (customer, items, totals); read-only once it has gone to Clover.
+    setReview(d.estimate && d.computed ? { estimate: d.estimate, computed: d.computed } : null);
     setStatus(["drafting", "ready_for_review"].includes(d.status) ? null : d);
     try { localStorage.setItem("lastEstimate", id); } catch { /* not available */ }
   }
@@ -216,8 +216,8 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
           </div>
         )}
         {busy && !status && <div className="text-sm text-neutral-400">Working on it…</div>}
-        {review && !status && (
-          <ReviewCard estimate={review.estimate} computed={review.computed} photos={photos} busy={busy}
+        {review && (
+          <ReviewCard estimate={review.estimate} computed={review.computed} photos={photos} busy={busy} readOnly={!!status}
             businessName={businessName} taxRate={taxRate} onApprove={approve}
             onEdit={(what) => { setInput(`Change the ${what.toLowerCase()}: `); inputRef.current?.focus(); }} />
         )}

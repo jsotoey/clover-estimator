@@ -126,7 +126,7 @@ function InvoiceRow({ id, inv, accepted, phone, name }: { id: string; inv: Invoi
         </div>
       )}
       {sms && <a href={sms} className="mt-2 inline-block text-sm font-semibold text-green-800 underline">Text the payment link</a>}
-      {msg && <p className="mt-2 text-sm text-neutral-600">{msg}</p>}
+      {msg && (inv.status === "waiting" || inv.status === "failed") && <p className="mt-2 text-sm text-neutral-600">{msg}</p>}
     </div>
   );
 }

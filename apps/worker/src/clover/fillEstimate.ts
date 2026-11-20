@@ -477,7 +477,9 @@ async function setDelivery(page: Page, e: Estimate) {
   const keepEmail = wantEmail || !smsOn;
   if (emailUsable) await setBox(page, email!, keepEmail, /send estimate via email/i);
   if (wantSms && !smsOn) {
-    deliveryNote = smsUsable ? "Clover didn't take the text option; sent by email" : "Clover has no phone for this customer; sent by email";
+    deliveryNote = smsUsable
+      ? "Clover didn't take the text option, so it went by email only."
+      : "Clover wouldn't allow a text for this customer (likely no text consent on their Clover profile), so it went by email only.";
     console.log(`[note] ${deliveryNote}`);
   }
 }

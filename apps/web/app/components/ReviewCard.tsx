@@ -10,10 +10,10 @@ const today = () => new Date().toLocaleDateString("en-US", { month: "short", day
 export const CHANGE_CHOICES = ["Price or work", "Dates", "Deposit", "Customer info"];
 
 /** The estimate as the customer will get it: a finished document, then Approve or Edit. */
-export default function ReviewCard({ estimate, computed, photos, onApprove, onEdit, busy, businessName, taxRate }: {
+export default function ReviewCard({ estimate, computed, photos, onApprove, onEdit, busy, businessName, taxRate, readOnly }: {
   estimate: Estimate; computed: PricingResult; photos: string[];
   onApprove: () => void; onEdit: (what: string) => void; busy: boolean;
-  businessName: string; taxRate: number;
+  businessName: string; taxRate: number; readOnly?: boolean;
 }) {
   const c = estimate.customer;
   const sameDay = estimate.service_date === estimate.completion_date;
@@ -95,7 +95,7 @@ export default function ReviewCard({ estimate, computed, photos, onApprove, onEd
         )}
       </div>
 
-      <div className="border-t border-neutral-200 bg-neutral-50 px-5 py-4">
+      {!readOnly && <div className="border-t border-neutral-200 bg-neutral-50 px-5 py-4">
         <button onClick={onApprove} disabled={busy} className="w-full rounded-xl bg-green-800 py-3.5 text-base font-semibold text-white disabled:opacity-50">
           {busy ? "Working…" : `Approve and send by ${sendBy}`}
         </button>
@@ -106,7 +106,7 @@ export default function ReviewCard({ estimate, computed, photos, onApprove, onEd
               className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm">{w}</button>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
