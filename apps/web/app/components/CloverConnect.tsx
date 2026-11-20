@@ -15,6 +15,7 @@ export default function CloverConnect() {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [typing, setTyping] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const load = useCallback(async () => {
@@ -114,27 +115,34 @@ export default function CloverConnect() {
           <p className="text-sm text-blue-900">
             {current?.status === "requested" ? "Opening Clover… (a few seconds)" : current?.message ?? "Tap the picture to click."}
           </p>
-          <p className="mt-1 text-xs text-neutral-500">Tap anything in the picture. Your keyboard opens and types straight into Clover.</p>
-          {frameUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="-mx-4 mt-2 block w-[calc(100%+2rem)] max-w-none cursor-pointer border-y border-neutral-300" />
-          ) : (
-            <div className="-mx-4 mt-2 flex h-96 items-center justify-center border-y border-dashed border-neutral-300 text-neutral-400">Loading Clover…</div>
-          )}
-          <div className="sticky bottom-0 -mx-4 mt-2 space-y-2 bg-neutral-50/95 px-4 py-2 backdrop-blur">
+          <div className="relative -mx-4 mt-2">
+            {frameUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="block w-full cursor-pointer border-y border-neutral-300" />
+            ) : (
+              <div className="flex h-96 items-center justify-center border-y border-dashed border-neutral-300 text-neutral-400">Loading Clover…</div>
+            )}
+            {/* Invisible: it only catches the phone keyboard. What you type shows up in the Clover picture. */}
             <input ref={keysRef} value={text} onChange={(e) => onType(e.target.value)} onKeyDown={onKey}
-              placeholder="Keyboard → Clover (tap the picture first)" inputMode="text" autoComplete="one-time-code"
+              onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
+              aria-label="Type into Clover" inputMode="text" autoComplete="one-time-code"
               autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
-              className="w-full rounded-xl border border-neutral-300 px-3 py-3 text-base" />
-            <div className="grid grid-cols-4 gap-2 text-sm">
-              {["Enter", "Backspace", "Tab", "Cancel"].map((k) => (
-                <button key={k} onClick={async () => {
-                  if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
-                  enqueue({ kind: "key", text: k });
-                }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k}</button>
-              ))}
-            </div>
+              className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0" style={{ fontSize: 16 }} />
+            {typing && (
+              <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-green-800 px-3 py-1 text-xs font-medium text-white shadow">
+                Typing into Clover
+              </div>
+            )}
           </div>
+          <div className="mt-2 grid grid-cols-4 gap-2 text-sm">
+            {["Enter", "Backspace", "Tab", "Cancel"].map((k) => (
+              <button key={k} onClick={async () => {
+                if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
+                enqueue({ kind: "key", text: k });
+              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k}</button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">Tap a box in the picture (like the code boxes) and type. On iPhone the texted code shows above the keyboard; tap it.</p>
         </div>
       )}
 
@@ -144,12 +152,14 @@ export default function CloverConnect() {
           <ul className="mt-2 divide-y divide-neutral-100 rounded-xl bg-white text-sm shadow-sm">
             {history.map((h, i) => {
               const prev = history[i + 1];
-              const gapHrs = prev?.finished_at && h.created_at ? Math.round((new Date(h.created_at).getTime() - new Date(prev.finished_at).getTime()) / 36e5) : null;
+              const gapMs = prev?.finished_at && h.created_at ? new Date(h.created_at).getTime() - new Date(prev.finished_at).getTime() : null;
+              const gap = gapMs === null || prev?.status !== "done" ? null : gapMs < 36e5 ? `${Math.max(1, Math.round(gapMs / 6e4))} min after last` : gapMs < 48 * 36e5 ? `${Math.round(gapMs / 36e5)}h after last` : `${Math.round(gapMs / 864e5)} days after last`;
+              const already = h.status === "done" && (h.seconds ?? 99) <= 10;
               return (
                 <li key={h.id} className="flex justify-between px-3 py-2">
                   <span>{fmt(h.created_at)} · {h.reason === "estimate" ? "needed for an estimate" : "manual"}</span>
-                  <span className={h.status === "done" ? "text-green-800" : "text-red-700"}>
-                    {h.status === "done" ? `✓ ${h.seconds ?? "?"}s` : "failed"}{gapHrs !== null ? ` · ${gapHrs}h after last` : ""}
+                  <span className={h.status === "done" ? "text-green-800" : "text-neutral-500"}>
+                    {already ? "✓ already connected" : h.status === "done" ? `✓ signed in (${h.seconds ?? "?"}s)` : h.status === "cancelled" ? "cancelled" : "didn't finish"}{gap && !already ? ` · ${gap}` : ""}
                   </span>
                 </li>
               );
