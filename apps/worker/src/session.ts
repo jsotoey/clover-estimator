@@ -16,6 +16,7 @@ export function ensureProfileForLogin(dataDir: string, email: string): boolean {
   let reset = false;
   if (previous !== null && previous !== normalized) {
     fs.rmSync(profileDir, { recursive: true, force: true });
+    fs.rmSync(path.join(dataDir, "clover-cookies.json"), { force: true });
     reset = true;
   }
   fs.mkdirSync(profileDir, { recursive: true });

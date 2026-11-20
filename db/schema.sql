@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS clover_login (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );
+-- True while a text box is focused in the worker's browser, so the phone can offer its keyboard.
+ALTER TABLE clover_login ADD COLUMN IF NOT EXISTS typing boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS clover_login_status_idx ON clover_login (status, created_at);
 
 -- Taps and typing from the phone; deleted as soon as the worker applies them.

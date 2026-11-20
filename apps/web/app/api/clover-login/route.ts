@@ -5,7 +5,9 @@ import { isAuthed, unauthorized } from "@/lib/auth";
 export async function GET() {
   if (!(await isAuthed())) return unauthorized();
   const current = await db().query(
-    `SELECT id, status, reason, message, frame_at, created_at, finished_at FROM clover_login ORDER BY id DESC LIMIT 1`
+    `SELECT id, status, reason, message, frame_at, created_at, finished_at,
+            COALESCE((to_jsonb(clover_login) ->> 'typing')::boolean, false) AS typing
+     FROM clover_login ORDER BY id DESC LIMIT 1`
   );
   const history = await db().query(
     `SELECT id, status, reason, created_at, finished_at,

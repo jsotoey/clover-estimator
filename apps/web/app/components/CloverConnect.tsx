@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Login = { id: number; status: string; reason: string | null; message: string | null; created_at: string; finished_at: string | null };
+type Login = { id: number; status: string; reason: string | null; message: string | null; typing?: boolean; created_at: string; finished_at: string | null };
 type Hist = { id: number; status: string; reason: string | null; created_at: string; finished_at: string | null; seconds: number | null };
 
 const fmt = (iso: string) =>
@@ -63,7 +63,12 @@ export default function CloverConnect() {
   function tap(e: React.MouseEvent<HTMLImageElement>) {
     const r = e.currentTarget.getBoundingClientRect();
     enqueue({ kind: "click", x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
-    // Open the phone keyboard right away; whatever is typed goes straight into Clover.
+    // Taps on pictures/buttons shouldn't pop the keyboard; it's offered when Clover focuses a text box.
+    prev.current = "";
+    setText("");
+    if (!current?.typing) keysRef.current?.blur();
+  }
+  function openKeyboard() {
     prev.current = "";
     setText("");
     keysRef.current?.focus({ preventScroll: true });
@@ -128,21 +133,23 @@ export default function CloverConnect() {
               aria-label="Type into Clover" inputMode="text" autoComplete="one-time-code"
               autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
               className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0" style={{ fontSize: 16 }} />
-            {typing && (
-              <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-green-800 px-3 py-1 text-xs font-medium text-white shadow">
-                Typing into Clover
-              </div>
+            {current?.typing && !typing && (
+              <button onClick={openKeyboard}
+                className="absolute inset-x-4 bottom-4 rounded-xl bg-green-800 py-3 text-base font-semibold text-white shadow-lg">
+                Tap to type (keyboard)
+              </button>
             )}
           </div>
           <div className="mt-2 grid grid-cols-4 gap-2 text-sm">
-            {["Enter", "Backspace", "Tab", "Cancel"].map((k) => (
+            {["Keyboard", "Enter", "Backspace", "Cancel"].map((k) => (
               <button key={k} onClick={async () => {
                 if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
+                if (k === "Keyboard") { openKeyboard(); return; }
                 enqueue({ kind: "key", text: k });
-              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k}</button>
+              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k === "Keyboard" ? "⌨ Type" : k}</button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-neutral-500">Tap a box in the picture (like the code boxes) and type. On iPhone the texted code shows above the keyboard; tap it.</p>
+          <p className="mt-2 text-xs text-neutral-500">Tap the picture to click. When you tap a box to type in (like the code boxes), a Type button appears. On iPhone the texted code shows above the keyboard; tap it.</p>
         </div>
       )}
 

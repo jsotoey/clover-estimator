@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
-import { newPage } from "./browser";
+import { newPage, saveSession } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -43,6 +43,25 @@ async function rememberBrowser(page: Page): Promise<boolean> {
 
 /** Pages Clover only shows to a signed-in merchant. */
 const SIGNED_IN_PATH = /^\/(dashboard|estimates|invoice-manager|orders|home|customers|inventory|reporting)(\/|$)/i;
+
+/** True when the focused element (including inside frames) is a box you type into. */
+async function textBoxFocused(page: Page): Promise<boolean> {
+  for (const f of page.frames()) {
+    const yes = await f.evaluate(() => {
+      const a = document.activeElement as HTMLElement | null;
+      if (!a || !document.hasFocus()) return false;
+      if (a.tagName === "TEXTAREA" || a.isContentEditable) return true;
+      if (a.tagName !== "INPUT") return false;
+      return !["checkbox", "radio", "button", "submit", "image", "file", "range", "color", "hidden"].includes((a as HTMLInputElement).type);
+    }).catch(() => false);
+    if (yes) return true;
+  }
+  return false;
+}
+
+async function setTyping(id: number, typing: boolean) {
+  await db().query(`UPDATE clover_login SET typing = $2 WHERE id = $1 AND typing <> $2`, [id, typing]);
+}
 
 async function setLogin(id: number, fields: { status?: string; message?: string; frame?: Buffer | null }) {
   await db().query(
@@ -94,6 +113,7 @@ export async function runLiveLogin(id: number): Promise<boolean> {
     page = await newPage();
     await page.setViewportSize(LOGIN_VIEWPORT);
     if (await checkSession(page)) {
+      await saveSession();
       await setLogin(id, { status: "done", message: "Already connected to Clover.", frame: null });
       await logEvent(null, "login_done", { loginId: id, seconds: 0, already: true });
       return true;
@@ -109,11 +129,13 @@ export async function runLiveLogin(id: number): Promise<boolean> {
       if (!remembered) remembered = await rememberBrowser(page);
       const shot = await page.screenshot({ type: "jpeg", quality: 60, scale: "device" });
       await setLogin(id, { frame: shot });
+      await setTyping(id, await textBoxFocused(page));
       // Signed in only once Clover shows a dashboard page (a code/verification step is NOT done yet).
       if (SIGNED_IN_PATH.test(new URL(page.url()).pathname)) {
         await page.waitForTimeout(1500);
         if (SIGNED_IN_PATH.test(new URL(page.url()).pathname)) {
           const seconds = Math.round((Date.now() - started) / 1000);
+          await saveSession();
           await setLogin(id, { status: "done", message: "Connected to Clover.", frame: null });
           await logEvent(null, "login_done", { loginId: id, seconds });
           return true;

@@ -11,6 +11,37 @@ export const VIEWPORT = { width: 1280, height: 800 };
 let shared: Promise<BrowserContext> | null = null;
 
 /**
+ * Clover keeps the sign-in in session cookies, which Chrome drops when it restarts (every deploy).
+ * We save all cookies to the volume after a good sign-in or session check, and put them back on launch.
+ */
+const cookieFile = () => path.join(config.dataDir, "clover-cookies.json");
+
+export async function saveSession(ctx?: BrowserContext): Promise<void> {
+  try {
+    const c = ctx ?? (await getContext());
+    const cookies = await c.cookies();
+    const tmp = `${cookieFile()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(cookies), { mode: 0o600 });
+    fs.renameSync(tmp, cookieFile());
+  } catch (e) {
+    console.error("saveSession failed", e instanceof Error ? e.message : e);
+  }
+}
+
+async function restoreSession(ctx: BrowserContext): Promise<void> {
+  try {
+    if (!fs.existsSync(cookieFile())) return;
+    const saved = JSON.parse(fs.readFileSync(cookieFile(), "utf8")) as Parameters<BrowserContext["addCookies"]>[0];
+    const now = Date.now() / 1000;
+    const live = saved.filter((c) => c.expires === undefined || c.expires === -1 || c.expires > now);
+    if (live.length) await ctx.addCookies(live);
+    console.log(`restored ${live.length} saved cookies`);
+  } catch (e) {
+    console.error("restoreSession failed", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
  * One long-lived Chrome for the whole worker, so the Clover session survives between estimates.
  * It runs as a normal (headed) Chrome inside a virtual display on the server; no fake browser identity.
  */
@@ -31,8 +62,9 @@ export function getContext(): Promise<BrowserContext> {
         locale: "en-US",
         timezoneId: "America/New_York",
       })
-      .then((ctx) => {
+      .then(async (ctx) => {
         ctx.on("close", () => (shared = null));
+        await restoreSession(ctx);
         return ctx;
       })
       .catch((e) => {

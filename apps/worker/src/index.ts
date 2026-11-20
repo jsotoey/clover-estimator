@@ -1,6 +1,6 @@
 import { config } from "./config";
 import { ensureProfileForLogin } from "./session";
-import { newPage } from "./browser";
+import { newPage, saveSession } from "./browser";
 import { checkSession } from "./clover/session";
 import { runRecon } from "./recon";
 import { fillEstimate } from "./clover/fillEstimate";
@@ -40,6 +40,7 @@ async function processEstimate() {
       await logEvent(id, "session_expired");
       return true;
     }
+    await saveSession();
     const res = await fillEstimate(page, job.estimate, job.computed, {
       dryRun: config.dryRun,
       taxRate: config.taxRate,
@@ -49,6 +50,7 @@ async function processEstimate() {
         await logEvent(id, "fill_step", { step });
       },
     });
+    await saveSession();
     await setStatus(id, "sent", { cloverNumber: res.cloverNumber, error: res.sent ? undefined : "dry run: not sent" });
     await logEvent(id, "done", { sent: res.sent, cloverTotalCents: res.cloverTotalCents, cloverNumber: res.cloverNumber });
   } catch (e) {
@@ -94,10 +96,23 @@ async function main() {
     }
   }
 
+  let lastKeepAlive = Date.now();
   for (;;) {
     try {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
+      // While idle, visit Clover every 30 minutes so the session stays fresh, and save it.
+      if (Date.now() - lastKeepAlive > 30 * 60 * 1000) {
+        lastKeepAlive = Date.now();
+        const page = await newPage();
+        try {
+          const ok = await checkSession(page);
+          if (ok) await saveSession();
+          await logEvent(null, "keepalive", { signedIn: ok });
+        } finally {
+          await page.close().catch(() => {});
+        }
+      }
     } catch (e) {
       console.error("loop error", e);
     }
