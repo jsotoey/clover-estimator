@@ -16,34 +16,21 @@ db/schema.sql Postgres schema (applied automatically when the worker starts)
 - [x] Milestone 4: fill the estimate (tested against a local replica of the Clover form; first real run still to confirm selectors)
 - [ ] Milestone 5: polish
 
-## Deploy from your phone
+## Deploy (all on Railway)
 
-### 1. Railway: database (2 min)
-1. railway.com → **New Project** → **Deploy PostgreSQL**.
-2. Tap the Postgres service → **Variables** → copy `DATABASE_PUBLIC_URL`. That's `DATABASE_URL` for Vercel.
+One Railway project ("insightful-manifestation") with three services: **Postgres**, **worker**, **web**. Photos and screenshots are stored in Postgres, so there is no other storage to set up. Non-secret settings are already filled in; see `.env.example` for the full list.
 
-### 2. Vercel: photo/screenshot storage (1 min)
-1. vercel.com → **Storage** → **Create** → **Blob**. Copy `BLOB_READ_WRITE_TOKEN`.
+### Secrets only Jon sets (Railway → service → Variables)
+- **worker:** `CLOVER_EMAIL`, `CLOVER_PASSWORD`
+- **web:** `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys), `MERCHANT_PIN` (any number you'll remember)
 
-### 3. Railway: the worker (3 min)
-1. Same Railway project → **+ New** → **GitHub Repo** → `clover-estimator`. Leave Root Directory **empty** (the repo's `railway.json` points at `apps/worker/Dockerfile`).
-2. Service → **Settings** → **Volumes** → add a volume mounted at `/data` (keeps the Clover login between restarts).
-3. Service → **Variables**:
-   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (Railway's reference picker)
-   - `BLOB_READ_WRITE_TOKEN` = from step 2
-   - `CLOVER_EMAIL`, `CLOVER_PASSWORD` = the employee login on M&J's Clover account
-   - `DRY_RUN` = `true`
-   - `RECON` = `true` (first run only)
-4. Deploy. Open **Deployments → View logs**. Every `[capture]` line is a screenshot URL.
+Adding a variable redeploys the service on its own (tap **Deploy** if Railway shows a staged change).
 
-### 4. If Clover asks for a verification code
-The web app shows a code box on the estimate's status banner. During RECON (no estimate yet), enter it from Railway instead: Postgres → **Data** → `verification_codes` → **+ Row**, `code` = the 6 digits (leave the other fields blank). The worker picks it up within a few seconds and asks Clover to remember the device.
+### If Clover asks for a verification code
+During an estimate, the app shows a code box. During RECON (no estimate yet): Railway → **Postgres → Data → verification_codes → + Row**, `code` = the digits. The worker picks it up within a few seconds and asks Clover to remember the device.
 
-### 5. After RECON
-Paste the RECON screenshot / `.aria.yaml` URLs from the logs into the Claude Code session so it can write the real estimate-form selectors (milestone 4). Then set `RECON=false`.
-
-### 6. Vercel: the web app
-vercel.com → **Add New → Project** → `clover-estimator` → Root Directory `apps/web` → env vars: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `MERCHANT_PIN`, `MERCHANT_TAX_RATE`, `PAYMENT_PROGRAM`.
+### RECON (one-time scouting of the Clover form)
+Set `RECON=true` on the worker. Its logs print the page structure between `[aria:…]` markers and the screenshots are viewable in the web app at `/api/files/<id>`. Then set `RECON=false`.
 
 ## Changing the Clover login
 Edit `CLOVER_EMAIL` / `CLOVER_PASSWORD` in Railway and redeploy. The worker notices the email changed, deletes the saved Clover session, and logs in fresh. Nothing else to change.
@@ -51,7 +38,7 @@ Edit `CLOVER_EMAIL` / `CLOVER_PASSWORD` in Railway and redeploy. The worker noti
 ## Safety switches
 - `DRY_RUN=true` (default): fills everything and screenshots, never clicks Send.
 - Before sending, the worker compares Clover's total to our computed total and stops on any mismatch over $0.01.
-- Screenshots go to Vercel Blob under random URLs. They can show customer details, so don't share the links.
+- Photos and screenshots are stored in Postgres and only served to someone signed in with the PIN.
 
 ## Local dev
 ```

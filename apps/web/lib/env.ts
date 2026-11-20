@@ -9,7 +9,6 @@ function req(name: string): string {
 export const env = {
   anthropicKey: () => req("ANTHROPIC_API_KEY"),
   databaseUrl: () => req("DATABASE_URL"),
-  blobToken: () => req("BLOB_READ_WRITE_TOKEN"),
   pin: () => req("MERCHANT_PIN"),
   taxRate: () => {
     const r = Number(req("MERCHANT_TAX_RATE"));

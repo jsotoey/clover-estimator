@@ -33,3 +33,15 @@ CREATE INDEX IF NOT EXISTS events_estimate_idx ON events (estimate_id, created_a
 
 -- Milestone 3: photos are tracked by the server, not by the AI.
 ALTER TABLE estimates ADD COLUMN IF NOT EXISTS photo_urls text[] NOT NULL DEFAULT '{}';
+
+-- Photos and worker screenshots live in Postgres (no external file storage needed).
+CREATE TABLE IF NOT EXISTS files (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_id  uuid REFERENCES estimates(id) ON DELETE CASCADE,
+  kind         text NOT NULL CHECK (kind IN ('photo','screenshot','text')),
+  name         text NOT NULL,
+  content_type text NOT NULL,
+  data         bytea NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS files_estimate_idx ON files (estimate_id, kind, created_at);

@@ -16,6 +16,5 @@ export const config = {
   recon: bool(process.env.RECON, false),
   taxRate: process.env.MERCHANT_TAX_RATE ? Number(process.env.MERCHANT_TAX_RATE) : undefined,
   pollMs: Number(process.env.POLL_INTERVAL_MS ?? 5000),
-  blobToken: process.env.BLOB_READ_WRITE_TOKEN,
   codeWaitMs: 10 * 60 * 1000,
 };

@@ -5,6 +5,7 @@ import type { Locator, Page } from "playwright";
 import { EstimateSchema, formatCents, type Estimate, type PricingResult } from "@ce/core";
 import { capture } from "../browser";
 import { config } from "../config";
+import { loadFile } from "../artifacts";
 
 /**
  * Fills out a new estimate in the Clover web dashboard.
@@ -266,10 +267,16 @@ async function attachPhotos(page: Page, urls: string[]) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ce-photos-"));
   const files: string[] = [];
   for (const [i, url] of urls.slice(0, 3).entries()) {
-    const res = await fetch(url);
-    if (!res.ok) throw new FillError(`Could not download photo ${i + 1}`);
+    let data: Buffer | null = null;
+    const stored = await loadFile(url).catch(() => null);
+    if (stored) data = stored.data;
+    else if (/^https?:\/\//.test(url)) {
+      const res = await fetch(url);
+      if (res.ok) data = Buffer.from(await res.arrayBuffer());
+    }
+    if (!data) throw new FillError(`Could not load photo ${i + 1}`);
     const file = path.join(dir, `photo-${i + 1}.jpg`);
-    fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    fs.writeFileSync(file, data);
     files.push(file);
   }
   await input.setInputFiles(files);

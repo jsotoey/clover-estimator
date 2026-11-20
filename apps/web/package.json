@@ -13,7 +13,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.11.0",
     "@ce/core": "workspace:*",
-    "@vercel/blob": "^2.9.0",
     "browser-image-compression": "^2.0.2",
     "heic2any": "^0.0.4",
     "next": "^16.4.6",
