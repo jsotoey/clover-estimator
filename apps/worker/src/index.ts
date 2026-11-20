@@ -64,6 +64,11 @@ async function processEstimate() {
 }
 
 async function main() {
+  // Lets another machine (e.g. a computer at the shop) be the only worker. Nothing here touches Clover.
+  if (/^(1|true|yes)$/i.test(process.env.WORKER_PAUSED ?? "")) {
+    console.log("WORKER_PAUSED=true: another computer is running the worker. Idling.");
+    for (;;) await sleep(60 * 60 * 1000);
+  }
   // Missing login: wait quietly instead of crash-looping (Railway emails on every crash).
   if (!process.env.CLOVER_EMAIL || !process.env.CLOVER_PASSWORD) {
     console.log("Waiting for CLOVER_EMAIL and CLOVER_PASSWORD. Add them in Railway > Variables; the service redeploys on its own.");
