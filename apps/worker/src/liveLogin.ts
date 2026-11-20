@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
-import { newPage, saveSession } from "./browser";
+import { newPage, saveSession, VIEWPORT } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
 /** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
@@ -28,10 +28,40 @@ export async function claimLoginRequest(): Promise<number | null> {
 }
 
 /**
- * The sign-in window is phone-shaped, so the picture fills the merchant's phone at real size
- * (Clover's login and the "I'm not a robot" check both have phone layouts). Pictures are taken at 2x for sharpness.
+ * The sign-in runs in a normal desktop-size window (Google's robot check needs the room), and the
+ * picture sent to the phone is zoomed in on the part that matters: the robot check when it's open,
+ * otherwise the login or code box. Taps are mapped back through the same zoom.
  */
-export const LOGIN_VIEWPORT = { width: 400, height: 760 };
+type Clip = { x: number; y: number; width: number; height: number };
+const FULL: Clip = { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height };
+let clip: Clip = FULL;
+
+function pad(b: Clip, by: number, minWidth: number): Clip {
+  let width = Math.max(b.width + by * 2, minWidth);
+  let x = b.x + b.width / 2 - width / 2;
+  let y = b.y - by;
+  let height = b.height + by * 2;
+  x = Math.max(0, Math.min(x, VIEWPORT.width - width));
+  y = Math.max(0, y);
+  width = Math.min(width, VIEWPORT.width);
+  height = Math.min(height, VIEWPORT.height - y);
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
+export async function focusArea(page: Page): Promise<Clip> {
+  // Google's picture check (its own frame, shown on top of the page).
+  for (const f of await page.locator('iframe[title*="challenge" i]').all()) {
+    const b = await f.boundingBox().catch(() => null);
+    if (b && b.width > 100 && b.height > 100 && b.y >= 0 && b.x >= 0 && (await f.isVisible().catch(() => false))) return pad(b, 8, 0);
+  }
+  // Otherwise the login / code form.
+  for (const f of await page.locator("form").all()) {
+    if (!(await f.isVisible().catch(() => false))) continue;
+    const b = await f.boundingBox().catch(() => null);
+    if (b && b.width > 150 && b.height > 80) return pad(b, 40, 420);
+  }
+  return FULL;
+}
 
 /** Tick Clover's "Remember this browser for 14 days" so it asks for a code less often. */
 async function rememberBrowser(page: Page): Promise<boolean> {
@@ -86,7 +116,7 @@ async function applyInputs(page: Page, id: number): Promise<void> {
   );
   for (const r of rows) {
     if (r.kind === "click" && r.x !== null && r.y !== null) {
-      await page.mouse.click(Math.round(r.x * LOGIN_VIEWPORT.width), Math.round(r.y * LOGIN_VIEWPORT.height));
+      await page.mouse.click(Math.round(clip.x + r.x * clip.width), Math.round(clip.y + r.y * clip.height));
     } else if (r.kind === "type" && r.text) {
       await page.keyboard.type(r.text, { delay: 40 });
     } else if (r.kind === "key" && r.text && /^(Enter|Tab|Backspace|Escape)$/.test(r.text)) {
@@ -111,7 +141,7 @@ export async function runLiveLogin(id: number): Promise<boolean> {
   let page: Page | null = null;
   try {
     page = await newPage();
-    await page.setViewportSize(LOGIN_VIEWPORT);
+    clip = FULL;
     if (await checkSession(page)) {
       await saveSession();
       await setLogin(id, { status: "done", message: "Already connected to Clover.", frame: null });
@@ -127,7 +157,8 @@ export async function runLiveLogin(id: number): Promise<boolean> {
       if (await cancelled(id)) return false;
       await applyInputs(page, id);
       if (!remembered) remembered = await rememberBrowser(page);
-      const shot = await page.screenshot({ type: "jpeg", quality: 60, scale: "device" });
+      clip = await focusArea(page);
+      const shot = await page.screenshot({ type: "jpeg", quality: 60, scale: "device", clip });
       await setLogin(id, { frame: shot });
       await setTyping(id, await textBoxFocused(page));
       // Signed in only once Clover shows a dashboard page (a code/verification step is NOT done yet).
