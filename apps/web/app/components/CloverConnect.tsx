@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import AppHeader from "./AppHeader";
+import { TopBar, BottomNav, FixroMark, SectionLabel, card, btnPrimary, btnSecondary } from "./ui";
 
 type Login = { id: number; status: string; reason: string | null; message: string | null; typing?: boolean; created_at: string; finished_at: string | null };
 type Hist = { id: number; status: string; reason: string | null; created_at: string; finished_at: string | null; seconds: number | null };
@@ -9,7 +9,7 @@ const fmt = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** Sign in to Clover through a live view of the worker's browser. */
-export default function CloverConnect() {
+export default function CloverConnect({ businessName }: { businessName: string }) {
   const [current, setCurrent] = useState<Login | null>(null);
   const [history, setHistory] = useState<Hist[]>([]);
   const [waiting, setWaiting] = useState(0);
@@ -98,55 +98,94 @@ export default function CloverConnect() {
   }
 
   const lastDone = history.find((h) => h.status === "done");
+  const connected = current?.status === "done" && waiting === 0;
+  const localSignin = live && current?.message?.startsWith("Sign in on the Mac");
+
+  // Real sign-ins only (a check that finds us already connected takes a few seconds and isn't one).
+  const signins = history.filter((h) => h.status === "done" && (h.seconds ?? 99) > 10);
+  const activity = signins.slice(0, 4).map((h, i) => {
+    const prev = signins[i + 1];
+    const gapMs = prev?.finished_at ? new Date(h.created_at).getTime() - new Date(prev.finished_at).getTime() : null;
+    const gap = gapMs === null ? null : gapMs < 36e5 ? `${Math.max(1, Math.round(gapMs / 6e4))} min` : gapMs < 48 * 36e5 ? `about ${Math.round(gapMs / 36e5)} hours` : `${Math.round(gapMs / 864e5)} days`;
+    return { id: h.id, when: fmt(h.finished_at ?? h.created_at), why: h.reason === "estimate" ? "needed for an estimate" : "you signed in", gap };
+  });
+
+  const steps = (
+    <ol className="flex flex-col gap-3.5">
+      {[
+        ["Open Clover on the computer", "A normal Chrome window opens there by itself."],
+        ["Log in like always", "Enter the code Clover sends, and tick Remember this browser."],
+        ["Come back and tap I'm signed in", waiting > 0 ? "Your waiting estimates go out right after." : "That's it. The app stays connected until Clover asks again."],
+      ].map(([t, sub], i) => (
+        <li key={t} className="flex gap-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-brand-dark">{i + 1}</span>
+          <span className="flex flex-col gap-0.5"><span className="text-[15px] font-semibold">{t}</span><span className="text-[13px] leading-snug text-muted">{sub}</span></span>
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
-    <>
-    <div className="mx-auto max-w-md"><AppHeader active="clover" /></div>
-    <main className="mx-auto max-w-md p-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Clover connection</h2>
+    <main className="mx-auto flex h-dvh max-w-md flex-col bg-paper">
+      <TopBar title="Clover" business={businessName} />
+      <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-4">
 
-      {!live && (
-        <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
-          {current?.status === "done" ? (
-            <p className="text-green-800">✓ Connected{lastDone?.finished_at ? ` since ${fmt(lastDone.finished_at)}` : ""}.</p>
-          ) : (
-            <p className="text-neutral-700">Sign in to M&amp;J&apos;s Clover once and the app keeps you connected until Clover asks again.</p>
-          )}
-          {waiting > 0 && <p className="mt-2 text-amber-800">{waiting} estimate{waiting > 1 ? "s are" : " is"} waiting for you to sign in.</p>}
-          {current?.status === "failed" && <p className="mt-2 text-red-700">{current.message}</p>}
-          <button onClick={start} disabled={busy} className="mt-4 w-full rounded-xl bg-green-800 py-3 font-semibold text-white disabled:opacity-50">
-            {busy ? "Starting…" : current?.status === "done" ? "Sign in again" : "Sign in to Clover"}
-          </button>
-        </div>
+      {!live && connected && (
+        <section className={`${card} flex flex-col gap-4 p-5`}>
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-soft">
+              <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F6B45" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </span>
+            <div className="flex flex-col gap-0.5">
+              <p className="font-display text-xl font-bold">Connected to Clover</p>
+              <p className="text-[13px] text-muted">{(signins[0] ?? lastDone)?.finished_at ? `Signed in ${fmt((signins[0] ?? lastDone)!.finished_at!)}` : "Ready for estimates"}</p>
+            </div>
+          </div>
+          <button onClick={start} disabled={busy} className={btnSecondary}>{busy ? "Starting…" : "Sign in again"}</button>
+        </section>
       )}
 
-      {live && current?.message?.startsWith("Sign in on the Mac") && (
-        <div className="mt-3 rounded-2xl border border-neutral-200 bg-white p-5">
-          <p className="text-lg font-semibold">Sign in on your Mac</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-neutral-700">
-            <li>A normal Chrome window opened on the Mac with Clover's login.</li>
-            <li>Log in like you always do and enter the code Clover texts you.</li>
-            <li>Tick &ldquo;Remember this browser&rdquo; if Clover offers it.</li>
-            <li>Once you see Clover&apos;s dashboard, tap the button below.</li>
-          </ol>
-          <button onClick={() => enqueue({ kind: "key", text: "SigninDone" })}
-            className="mt-4 w-full rounded-xl bg-green-800 py-3.5 text-base font-semibold text-white">I&apos;m signed in</button>
+      {!live && !connected && (
+        <section className={`${card} flex flex-col gap-4 p-5`}>
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-warn-soft">
+              <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9A4A08" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+            </span>
+            <div className="flex flex-col gap-0.5">
+              <p className="font-display text-xl font-bold">Sign in to Clover</p>
+              <p className="text-[13px] text-muted">{waiting > 0 ? `${waiting} estimate${waiting > 1 ? "s are" : " is"} waiting to go out` : "Needed before estimates can go out"}</p>
+            </div>
+          </div>
+          {current?.status === "failed" && current.message && <p className="rounded-xl bg-bad-soft px-3 py-2.5 text-[13px] text-bad">Last try didn&apos;t finish: {current.message}</p>}
+          {steps}
+          <button onClick={start} disabled={busy} className={btnPrimary}>{busy ? "Opening…" : "Start sign-in"}</button>
+        </section>
+      )}
+
+      {localSignin && (
+        <section className={`${card} flex flex-col gap-4 p-5`}>
+          <div className="flex flex-col gap-0.5">
+            <p className="font-display text-xl font-bold">Sign in on the computer</p>
+            <p className="text-[13px] text-muted">Clover&apos;s login is open there now.</p>
+          </div>
+          {steps}
+          <button onClick={() => enqueue({ kind: "key", text: "SigninDone" })} className={btnPrimary}>I&apos;m signed in</button>
           <button onClick={async () => { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); }}
-            className="mt-2 w-full py-2 text-sm text-neutral-500 underline">Cancel</button>
-        </div>
+            className="py-1 text-sm font-semibold text-muted underline">Cancel</button>
+        </section>
       )}
 
-      {live && !current?.message?.startsWith("Sign in on the Mac") && (
-        <div className="mt-3">
-          <p className="text-sm text-blue-900">
+      {live && !localSignin && (
+        <section className="flex flex-col gap-2">
+          <p className="text-sm font-medium">
             {current?.status === "requested" ? "Opening Clover… (a few seconds)" : current?.message ?? "Tap the picture to click."}
           </p>
-          <div className="relative -mx-4 mt-2">
+          <div className="relative -mx-4">
             {frameUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="block w-full cursor-pointer border-y border-neutral-300" />
+              <img ref={imgRef} src={frameUrl} alt="Clover sign-in" onClick={tap} className="block w-full cursor-pointer border-y border-edge" />
             ) : (
-              <div className="flex h-96 items-center justify-center border-y border-dashed border-neutral-300 text-neutral-400">Loading Clover…</div>
+              <div className="flex h-96 items-center justify-center border-y border-dashed border-edge text-muted">Loading Clover…</div>
             )}
             {/* Invisible: it only catches the phone keyboard. What you type shows up in the Clover picture. */}
             <input ref={keysRef} value={text} onChange={(e) => onType(e.target.value)} onKeyDown={onKey}
@@ -154,43 +193,34 @@ export default function CloverConnect() {
               aria-label="Type into Clover" inputMode="text" autoComplete="one-time-code"
               autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
               className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0" style={{ fontSize: 16 }} />
-
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-2 text-sm">
+          <div className="grid grid-cols-4 gap-2 text-sm">
             {["Keyboard", "Enter", "Backspace", "Cancel"].map((k) => (
               <button key={k} onClick={async () => {
                 if (k === "Cancel") { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); return; }
                 if (k === "Keyboard") { openKeyboard(); return; }
                 enqueue({ kind: "key", text: k });
-              }} className={`rounded-lg border py-2 ${k === "Cancel" ? "border-transparent text-neutral-500 underline" : k === "Keyboard" && current?.typing && !typing ? "animate-pulse border-green-800 bg-green-800 font-semibold text-white" : "border-neutral-300 bg-white"}`}>{k === "Backspace" ? "⌫" : k === "Keyboard" ? "⌨ Type" : k}</button>
+              }} className={`h-11 rounded-xl border ${k === "Cancel" ? "border-transparent text-muted underline" : k === "Keyboard" && current?.typing && !typing ? "animate-pulse border-brand bg-brand font-semibold text-white" : "border-edge bg-white"}`}>{k === "Backspace" ? "⌫" : k === "Keyboard" ? "Type" : k}</button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-neutral-500">Tap the picture to click. When you tap a box to type in (like the code boxes), the Type button turns green: tap it for your keyboard. On iPhone the texted code shows above the keyboard; tap it.</p>
-        </div>
+        </section>
       )}
 
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Sign-in history</h2>
-        {history.length === 0 ? <p className="mt-2 text-sm text-neutral-500">None yet.</p> : (
-          <ul className="mt-2 divide-y divide-neutral-100 rounded-xl bg-white text-sm shadow-sm">
-            {history.map((h, i) => {
-              const prev = history[i + 1];
-              const gapMs = prev?.finished_at && h.created_at ? new Date(h.created_at).getTime() - new Date(prev.finished_at).getTime() : null;
-              const gap = gapMs === null || prev?.status !== "done" ? null : gapMs < 36e5 ? `${Math.max(1, Math.round(gapMs / 6e4))} min after last` : gapMs < 48 * 36e5 ? `${Math.round(gapMs / 36e5)}h after last` : `${Math.round(gapMs / 864e5)} days after last`;
-              const already = h.status === "done" && (h.seconds ?? 99) <= 10;
-              return (
-                <li key={h.id} className="flex justify-between px-3 py-2">
-                  <span>{fmt(h.created_at)} · {h.reason === "estimate" ? "needed for an estimate" : "manual"}</span>
-                  <span className={h.status === "done" ? "text-green-800" : "text-neutral-500"}>
-                    {already ? "✓ already connected" : h.status === "done" ? `✓ signed in (${h.seconds ?? "?"}s)` : h.status === "cancelled" ? "cancelled" : "didn't finish"}{gap && !already ? ` · ${gap}` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+      <section className={`${card} flex flex-col gap-2.5 px-[18px] py-4`}>
+        <SectionLabel>Recent sign-ins</SectionLabel>
+        {activity.length === 0 ? <p className="text-sm text-muted">None yet.</p> : activity.map((a) => (
+          <div key={a.id} className="flex justify-between gap-3 text-sm">
+            <span className="flex flex-col"><span className="font-medium">{a.when}</span><span className="text-[13px] text-muted">{a.why}</span></span>
+            {a.gap && <span className="text-right text-[13px] text-muted">{a.gap} after<br />the one before</span>}
+          </div>
+        ))}
       </section>
+
+      <div className="mt-auto flex items-center justify-center gap-2 pb-1 pt-4 text-xs text-muted">
+        <span>Powered by</span><FixroMark variant="light" size="sm" />
+      </div>
+      </div>
+      <BottomNav active="clover" />
     </main>
-    </>
   );
 }

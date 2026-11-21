@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+@theme {
+  --color-brand: #1F6B45;
+  --color-brand-dark: #14492F;
+  --color-brand-soft: #E3EFE7;
+  --color-ink: #16201B;
+  --color-muted: #5C665F;
+  --color-line: #E4E1D8;
+  --color-edge: #CFCBC0;
+  --color-paper: #F6F5F1;
+  --color-warn: #9A4A08;
+  --color-warn-soft: #FBEEDC;
+  --color-bad: #A3261B;
+  --color-bad-soft: #FBE9E6;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Inter Variable", sans-serif;
+}
+
+@keyframes ce-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(163 38 27 / 0.45); } 50% { box-shadow: 0 0 0 10px rgb(163 38 27 / 0); } }
+.ce-recording { animation: ce-pulse 1.4s ease-in-out infinite; }

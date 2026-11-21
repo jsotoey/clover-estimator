@@ -12,9 +12,11 @@ export async function POST() {
 export async function GET() {
   if (!(await isAuthed())) return unauthorized();
   const { rows } = await db().query(
-    `SELECT id, status, error, clover_estimate_number AS number, accepted_at, updated_at,
-            estimate->'customer'->>'name' AS customer, (computed->>'totalCents')::int AS total_cents
-     FROM estimates WHERE estimate IS NOT NULL ORDER BY updated_at DESC LIMIT 25`
+    `SELECT e.id, e.status, e.error, e.clover_estimate_number AS number, e.accepted_at, e.updated_at,
+            e.estimate->'customer'->>'name' AS customer, (e.computed->>'totalCents')::int AS total_cents,
+            COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'status', i.status))
+                      FROM invoices i WHERE i.estimate_id = e.id), '[]'::json) AS invoices
+     FROM estimates e WHERE e.estimate IS NOT NULL ORDER BY e.updated_at DESC LIMIT 40`
   );
   return Response.json({ estimates: rows });
 }

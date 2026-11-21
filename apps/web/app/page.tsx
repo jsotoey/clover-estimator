@@ -15,5 +15,5 @@ export default async function Home() {
         <ul className="mt-3 list-disc pl-5 font-mono text-sm">{missing.map((m) => <li key={m}>{m}</li>)}</ul>
       </main>
     );
-  return (await isAuthed()) ? <EstimateApp businessName={env.businessName()} taxRate={env.taxRate()} /> : <PinScreen />;
+  return (await isAuthed()) ? <EstimateApp businessName={env.businessName()} taxRate={env.taxRate()} /> : <PinScreen businessName={env.businessName()} />;
 }

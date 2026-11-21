@@ -1,121 +1,83 @@
 "use client";
 import { formatCents, type Estimate, type PricingResult } from "@ce/core";
+import { SectionLabel, Tag, card, fmtDay } from "./ui";
 
-const fmtDate = (d: string) =>
-  new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 const fmtLong = (d: string) =>
   new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-const today = () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 export const CHANGE_CHOICES = ["Price or work", "Dates", "Deposit", "Customer info"];
 
-/** The estimate as the customer will get it: a finished document, then Approve or Edit. */
-export default function ReviewCard({ estimate, computed, photos, onApprove, onEdit, busy, businessName, taxRate, readOnly }: {
+export function deliveryWords(e: Estimate) {
+  return e.delivery === "both" ? "email and text" : e.delivery === "sms" ? "text" : "email";
+}
+
+/** The estimate as the customer will get it. Approve / Change live in the bottom bar. */
+export default function ReviewCard({ estimate, computed, photos, businessName, taxRate, readOnly }: {
   estimate: Estimate; computed: PricingResult; photos: string[];
-  onApprove: () => void; onEdit: (what: string) => void; busy: boolean;
   businessName: string; taxRate: number; readOnly?: boolean;
 }) {
   const c = estimate.customer;
   const sameDay = estimate.service_date === estimate.completion_date;
-  const sendBy = estimate.delivery === "both" ? "email and text" : estimate.delivery === "sms" ? "text" : "email";
   const taxPct = `${+(taxRate * 100).toFixed(3)}%`;
+  const to = [estimate.delivery !== "sms" && c.email, estimate.delivery !== "email" && c.phone].filter(Boolean).join(" and ");
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-      <div className="flex items-start justify-between bg-green-900 px-5 py-4 text-white">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-green-200">Estimate</p>
-          <p className="mt-0.5 text-lg font-semibold">{businessName || "Your business"}</p>
+    <section className={`${card} flex flex-col gap-3.5 p-[18px]`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <SectionLabel>{businessName ? `${businessName} · estimate for` : "Estimate for"}</SectionLabel>
+          <p className="font-display text-xl font-bold">{c.name}</p>
+          {c.job_address && <p className="text-[13px] text-muted">{c.job_address}</p>}
         </div>
-        <div className="text-right text-xs text-green-100">
-          <p>Issued {today()}</p>
-          <p>Valid until {fmtLong(estimate.expiration_date)}</p>
-        </div>
+        {!readOnly && <Tag tone="warn">Not sent yet</Tag>}
       </div>
 
-      <div className="space-y-5 px-5 py-4 text-sm">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Prepared for</p>
-            <p className="mt-1 font-medium">{c.name}</p>
-            <p className="break-all text-neutral-600">{c.email}</p>
-            {c.phone && <p className="text-neutral-600">{c.phone}</p>}
+      <div>
+        {computed.lines.map((l, i) => (
+          <div key={i} className="flex justify-between gap-4 border-b border-line py-3 text-sm leading-snug">
+            <span>{l.description}</span>
+            <span className="font-semibold tabular-nums">{formatCents(l.priceCents)}</span>
           </div>
-          {c.job_address && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Job site</p>
-              <p className="mt-1 text-neutral-700">{c.job_address}</p>
-            </div>
-          )}
-        </div>
+        ))}
+      </div>
 
-        <div>
-          <div className="flex justify-between border-b border-neutral-200 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-            <span>Description</span><span>Amount</span>
-          </div>
-          {computed.lines.map((l, i) => (
-            <div key={i} className="flex justify-between gap-4 border-b border-neutral-100 py-2">
-              <span>{l.description}</span><span className="tabular-nums">{formatCents(l.priceCents)}</span>
-            </div>
-          ))}
-          <div className="ml-auto mt-2 w-3/4 space-y-1">
-            <div className="flex justify-between text-neutral-600"><span>Subtotal</span><span className="tabular-nums">{formatCents(computed.subtotalCents)}</span></div>
-            {estimate.taxable && (
-              <div className="flex justify-between text-neutral-600"><span>Sales tax ({taxPct})</span><span className="tabular-nums">{formatCents(computed.taxCents)}</span></div>
-            )}
-            <div className="flex justify-between border-t border-neutral-300 pt-1 text-base font-semibold"><span>Total</span><span className="tabular-nums">{formatCents(computed.totalCents)}</span></div>
-          </div>
-        </div>
+      <div className="flex flex-col gap-1.5 text-sm">
+        <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{formatCents(computed.subtotalCents)}</span></div>
+        {estimate.taxable && (
+          <div className="flex justify-between text-muted"><span>NJ sales tax ({taxPct})</span><span className="tabular-nums">{formatCents(computed.taxCents)}</span></div>
+        )}
+        <div className="flex justify-between border-t border-line pt-2 text-base font-bold"><span>Total</span><span className="tabular-nums">{formatCents(computed.totalCents)}</span></div>
+      </div>
 
-        <div className="rounded-xl bg-neutral-50 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Payment schedule</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1 rounded-xl bg-paper px-3 py-2.5">
+          <SectionLabel>Payment</SectionLabel>
           {computed.depositCents > 0 ? (
             <>
-              <div className="mt-2 flex justify-between">
-                <span>Deposit ({estimate.deposit_percent}%), due {fmtDate(estimate.deposit_due_date)}</span>
-                <span className="font-semibold tabular-nums">{formatCents(computed.depositCents)}</span>
-              </div>
-              <div className="mt-1 flex justify-between text-neutral-600">
-                <span>Balance, due on completion</span><span className="tabular-nums">{formatCents(computed.balanceCents)}</span>
-              </div>
+              <span className="text-sm font-semibold">{estimate.deposit_percent}% deposit · {formatCents(computed.depositCents)}</span>
+              <span className="text-xs text-muted">Due {fmtDay(estimate.deposit_due_date)} · rest on completion</span>
             </>
-          ) : (
-            <div className="mt-2 flex justify-between">
-              <span>Full payment, due on completion</span>
-              <span className="font-semibold tabular-nums">{formatCents(computed.balanceCents)}</span>
-            </div>
-          )}
+          ) : <span className="text-sm font-semibold">Full, on completion</span>}
         </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Schedule</p>
-          <p className="mt-1">{sameDay ? fmtDate(estimate.service_date) : `${fmtDate(estimate.service_date)} to ${fmtDate(estimate.completion_date)}`}</p>
+        <div className="flex flex-col gap-1 rounded-xl bg-paper px-3 py-2.5">
+          <SectionLabel>Starts</SectionLabel>
+          <span className="text-sm font-semibold">{fmtDay(estimate.service_date)}</span>
+          {!sameDay && <span className="text-xs text-muted">Done by {fmtDay(estimate.completion_date)}</span>}
         </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Notes</p>
-          <p className="mt-1 text-neutral-700">{estimate.note}</p>
-        </div>
-
-        {photos.length > 0 && (
-          <div className="flex gap-2">
-            {photos.map((p) => <img key={p} src={p} alt="" className="h-16 w-16 rounded-lg object-cover" />)}
-          </div>
-        )}
       </div>
 
-      {!readOnly && <div className="border-t border-neutral-200 bg-neutral-50 px-5 py-4">
-        <button onClick={onApprove} disabled={busy} className="w-full rounded-xl bg-green-800 py-3.5 text-base font-semibold text-white disabled:opacity-50">
-          {busy ? "Working…" : `Approve and send by ${sendBy}`}
-        </button>
-        <p className="mt-3 text-center text-xs text-neutral-500">Need a change? Tap one, or just type it below.</p>
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
-          {CHANGE_CHOICES.map((w) => (
-            <button key={w} onClick={() => onEdit(w)} disabled={busy}
-              className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm">{w}</button>
-          ))}
+      {estimate.note && <p className="text-[13px] leading-relaxed text-muted">{estimate.note}</p>}
+
+      {photos.length > 0 && (
+        <div className="flex gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {photos.map((p) => <img key={p} src={p} alt="Job photo" className="h-16 w-16 rounded-lg object-cover" />)}
         </div>
-      </div>}
-    </div>
+      )}
+
+      <p className="text-[13px] text-muted">
+        {readOnly ? "Sent" : "Sends"} by {deliveryWords(estimate)}{to ? ` to ${to}` : ""} · valid until {fmtLong(estimate.expiration_date)}
+      </p>
+    </section>
   );
 }

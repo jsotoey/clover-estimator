@@ -12,7 +12,7 @@ Things to build next, in rough priority order. Newest notes at the bottom of eac
 - [ ] **Text the invoice link.** Clover invoices are email-only; the app shows "Text the payment link" only when Clover hands back a share link. Confirm whether Clover gives one, otherwise find it in the sent invoice.
 
 ## Input
-- [ ] **Voice.** The greeting says "talk or type," but voice isn't working on the phone. Add a microphone button in the app (speech-to-text in the browser), so it doesn't depend on the keyboard's dictation key.
+- [x] **Voice.** Mic button built (Nov 21 redesign): tap to talk, tap to stop, words land in the box to fix before sending. Needs a real-phone test; falls back to the keyboard mic if the browser blocks it.
 
 ## App layout
 - [x] **Static top menu.** Header stays the same on every screen (Estimates title; Recent, Clover, + New), the Recent list opens under it instead of replacing it. (Nov 20)
