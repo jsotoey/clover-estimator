@@ -69,13 +69,22 @@ export default function ReviewCard({ estimate, computed, photos, onApprove, onEd
 
         <div className="rounded-xl bg-neutral-50 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Payment schedule</p>
-          <div className="mt-2 flex justify-between">
-            <span>Deposit ({estimate.deposit_percent}%), due {fmtDate(estimate.deposit_due_date)}</span>
-            <span className="font-semibold tabular-nums">{formatCents(computed.depositCents)}</span>
-          </div>
-          <div className="mt-1 flex justify-between text-neutral-600">
-            <span>Balance, due on completion</span><span className="tabular-nums">{formatCents(computed.balanceCents)}</span>
-          </div>
+          {computed.depositCents > 0 ? (
+            <>
+              <div className="mt-2 flex justify-between">
+                <span>Deposit ({estimate.deposit_percent}%), due {fmtDate(estimate.deposit_due_date)}</span>
+                <span className="font-semibold tabular-nums">{formatCents(computed.depositCents)}</span>
+              </div>
+              <div className="mt-1 flex justify-between text-neutral-600">
+                <span>Balance, due on completion</span><span className="tabular-nums">{formatCents(computed.balanceCents)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="mt-2 flex justify-between">
+              <span>Full payment, due on completion</span>
+              <span className="font-semibold tabular-nums">{formatCents(computed.balanceCents)}</span>
+            </div>
+          )}
         </div>
 
         <div>

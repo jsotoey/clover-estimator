@@ -145,8 +145,7 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
     const said = [...new Set(msgs.map((m) => m.trim()).filter((m) => m && m.length < 120))].slice(0, 3);
     throw new FillError(said.length ? `Clover won't continue yet. It says: ${said.join("; ")}` : "Clover won't continue yet: a field on the form is still flagged. See the screenshot.");
   }
-  await review.click();
-  await page.waitForLoadState("networkidle").catch(() => {});
+  await openSendPage(page, review, !!opts.photoUrls?.length);
   await setDelivery(page, estimate);
   await step("05-review");
 
@@ -458,6 +457,57 @@ export async function readTotalCents(page: Page): Promise<number | null> {
     return null;
   });
   return fromRow ? parseMoneyToCents(`$${fromRow}`) : null;
+}
+
+/** The send page has the "Send estimate via email" box. */
+function sendPageBox(page: Page): Locator {
+  return page.getByRole("checkbox", { name: /email|text|sms/i });
+}
+
+/**
+ * Click Preview and make sure the send page actually opened. Nov 21: with a photo attached,
+ * the first Preview click was ignored and the form just sat there, so we wait for uploads to
+ * settle, then retry the click a few times before giving up with a clear message.
+ */
+async function openSendPage(page: Page, preview: Locator, hadPhotos: boolean) {
+  if (hadPhotos) await waitForUploads(page);
+  const formUrl = page.url();
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await preview.click().catch(() => {});
+    await page.waitForLoadState("networkidle").catch(() => {});
+    const opened = await firstVisible([sendPageBox(page)], 15_000);
+    if (opened) return;
+    if (page.url() !== formUrl && !(await preview.isVisible().catch(() => false))) {
+      // Left the form but no delivery boxes yet: give the page a little longer.
+      if (await firstVisible([sendPageBox(page)], 10_000)) return;
+      break;
+    }
+    console.log(`[fill] Preview didn't open the send page (try ${attempt}), retrying`);
+    if (hadPhotos) await waitForUploads(page);
+    await page.waitForTimeout(2000 * attempt);
+  }
+  const msgs = await page.locator('[role="alert"], [aria-live], [class*="error" i]')
+    .filter({ hasText: /\S/ }).allInnerTexts().catch(() => [] as string[]);
+  const said = [...new Set(msgs.map((m) => m.trim()).filter((m) => m && m.length < 120))].slice(0, 3);
+  throw new FillError(
+    "Clover didn't open the send page after Preview" + (hadPhotos ? " (a photo may still have been uploading)" : "") +
+    (said.length ? `. Clover says: ${said.join("; ")}` : "")
+  );
+}
+
+/** Wait (up to 45s) until Clover stops showing upload spinners/progress for attachments. */
+async function waitForUploads(page: Page) {
+  const busy = page.locator('[role="progressbar"], [aria-busy="true"]').or(page.getByText(/uploading/i));
+  const deadline = Date.now() + 45_000;
+  await page.waitForTimeout(1500);
+  while (Date.now() < deadline) {
+    const n = await busy.count().catch(() => 0);
+    let visible = false;
+    for (let i = 0; i < n && !visible; i++) visible = await busy.nth(i).isVisible().catch(() => false);
+    if (!visible) return;
+    await page.waitForTimeout(1000);
+  }
+  console.log("[fill] attachments still look busy after 45s; trying Preview anyway");
 }
 
 async function setDelivery(page: Page, e: Estimate) {

@@ -22,7 +22,7 @@ describe("chat helpers", () => {
   });
   it("fills the standard terms into the prompt", () => {
     process.env.DEFAULT_DEPOSIT_PERCENT = "40";
-    expect(buildSystemPrompt()).toMatch(/Deposit 40% good 30 days tax yes/);
+    expect(buildSystemPrompt()).toMatch(/Deposit 40% good 29 days tax yes/);
   });
   it("parses ask_owner input", () => {
     expect(parseAskOwner({ question: "When?", options: ["a", "b", "c", "d", "e"], date_picker: true })).toEqual({ question: "When?", options: ["a", "b", "c", "d"], datePicker: true });

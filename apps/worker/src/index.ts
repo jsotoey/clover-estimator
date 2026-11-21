@@ -66,9 +66,13 @@ function allowedToSend(raw: unknown): boolean {
 
 /** Our own errors are already plain English; browser-tool errors get a short summary. */
 function friendlyError(e: unknown, msg: string): string {
-  if (e instanceof FillError) return msg;
-  if (/timeout/i.test(msg)) return "Clover didn't respond the way we expected (a button or field didn't show up in time). See the screenshot.";
-  return "Something went wrong filling in Clover. See the screenshot, then tap Try again.";
+  // Only the "Clicked Send" error happens after the Send button; everything else stops before it.
+  const mayHaveSent = /clicked send/i.test(msg);
+  const base = e instanceof FillError ? msg
+    : /timeout/i.test(msg) ? "Clover didn't respond the way we expected (a button or field didn't show up in time)."
+    : "Something unexpected happened while filling in Clover.";
+  const end = mayHaveSent ? "" : " Nothing was sent to the customer, so it's safe to tap Try again.";
+  return `${base.replace(/\s*$/, "").replace(/([^.])$/, "$1.")}${end}`;
 }
 
 async function processEstimate() {
