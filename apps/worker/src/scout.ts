@@ -62,7 +62,7 @@ export async function runScoutTask(): Promise<boolean> {
 
 async function describe(page: Page) {
   const url = page.url();
-  const aria = (await page.locator("body").ariaSnapshot({ timeout: 10_000 }).catch(() => "")).slice(0, 30_000);
+  const aria = redactAria((await page.locator("body").ariaSnapshot({ timeout: 10_000 }).catch(() => "")).slice(0, 30_000));
   // Passed as text: the TypeScript runner adds helper names to inline functions that don't exist in the page.
   const controls = (await page.evaluate(`(() => {
     const out = [];
@@ -75,11 +75,29 @@ async function describe(page: Page) {
       if (!el.offsetParent && el.tagName !== "SELECT") continue;
       const kind = el.tagName.toLowerCase() + (el.getAttribute("type") ? "[" + el.getAttribute("type") + "]" : "") + (el.getAttribute("role") ? "{" + el.getAttribute("role") + "}" : "");
       const text = el.tagName === "BUTTON" ? (el.innerText || "").trim().slice(0, 60) : label(el);
-      const value = el.tagName !== "BUTTON" && el.value !== undefined ? ' = "' + String(el.value).slice(0, 40) + '"' : "";
+      // Never record what's typed in a password, email, code or PIN box (or anything on a login page).
+      const secret = /password|passcode|pin|code|email|otp|token/i.test(String(el.getAttribute("type")) + " " + String(el.getAttribute("autocomplete")) + " " + String(el.getAttribute("name")) + " " + label(el)) || /login|sign-?in/i.test(location.pathname);
+      const value = el.tagName === "BUTTON" || el.value === undefined || el.value === "" ? "" : secret ? ' = "[hidden]"' : ' = "' + String(el.value).slice(0, 40) + '"';
       const dis = el.disabled ? " (disabled)" : "";
       out.push(kind + " " + text + value + dis);
     }
     return out.slice(0, 200);
   })()`)) as string[];
   return { url, controls, aria };
+}
+
+/**
+ * Accessibility outlines include what's typed in text boxes. Hide the value of any box that could hold
+ * a secret (password, email, code, PIN), and every box value on a login page.
+ */
+export function redactAria(aria: string): string {
+  const onLogin = /heading "Log in"|button "Log in"|textbox "Password"/i.test(aria);
+  return aria
+    .split("\n")
+    .map((line) => {
+      const m = line.match(/^(\s*-\s*textbox\s+"([^"]*)"[^:]*):\s*(.+)$/);
+      if (!m) return line;
+      return onLogin || /password|passcode|pin|code|email|otp|token/i.test(m[2]) ? `${m[1]}: [hidden]` : line;
+    })
+    .join("\n");
 }
