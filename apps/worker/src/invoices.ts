@@ -4,8 +4,9 @@ import { config } from "./config";
 import { newPage, useStore } from "./browser";
 import { activeStore, loadStores, signedIn, storeById } from "./stores";
 import { requestLogin } from "./liveLogin";
+import { planInstall } from "./installPlan";
 import { checkSession, assertRightStore } from "./clover/session";
-import { fillInvoice, readEstimateStatuses, FillError } from "./clover/fillEstimate";
+import { fillInvoice, readEstimateStatuses, readInvoiceRows, matchInvoiceRows, isPaidStatus, FillError } from "./clover/fillEstimate";
 
 /** Right after an estimate is really sent: set up its deposit and balance invoices (held in the app). */
 export async function createInvoiceRows(estimateId: string, rawEstimate: unknown, rawComputed: unknown) {
@@ -26,7 +27,7 @@ export async function createInvoiceRows(estimateId: string, rawEstimate: unknown
 
 interface InvoiceJob {
   id: string; kind: "deposit" | "balance"; subtotal_cents: number; total_cents: number;
-  estimate_id: string; estimate: unknown; clover_estimate_number: string | null; merchant_id: number;
+  estimate_id: string; estimate: unknown; clover_estimate_number: string | null; merchant_id: number; deposit_note: string | null;
 }
 
 async function claimInvoice(): Promise<InvoiceJob | null> {
@@ -35,7 +36,8 @@ async function claimInvoice(): Promise<InvoiceJob | null> {
      FROM estimates e
      WHERE e.id = i.estimate_id AND i.id = (SELECT iv.id FROM invoices iv JOIN estimates ev ON ev.id = iv.estimate_id
                                         WHERE iv.status = 'approved' AND ev.merchant_id IS NOT NULL ORDER BY iv.updated_at FOR UPDATE OF iv SKIP LOCKED LIMIT 1)
-     RETURNING i.id, i.kind, i.subtotal_cents, i.total_cents, i.estimate_id, e.estimate, e.clover_estimate_number, e.merchant_id`
+     RETURNING i.id, i.kind, i.subtotal_cents, i.total_cents, i.estimate_id, e.estimate, e.clover_estimate_number, e.merchant_id,
+               (SELECT deposit_note FROM merchants WHERE id = e.merchant_id) AS deposit_note`
   );
   return rows[0] ?? null;
 }
@@ -47,7 +49,7 @@ function invoiceText(job: InvoiceJob): { itemName: string; note: string } {
   const test = /^\s*TEST\b/i.test(e.note) ? "TEST INVOICE, please ignore. " : "";
   const label = job.kind === "deposit" ? `Deposit (${e.deposit_percent}%)` : e.deposit_percent > 0 ? "Balance" : "Payment";
   // Clover cuts item names at 80 characters, so the item stays short and the work goes in the note.
-  const thanks = job.kind === "deposit" ? "Thank you, this locks in your start date." : "Thank you for your business!";
+  const thanks = job.kind === "deposit" ? (job.deposit_note?.trim() || "Thank you, this locks in your start date.") : "Thank you for your business!";
   const head = `${test}${label} for ${num}.`;
   const room = 200 - head.length - thanks.length - 3;
   const workText = room > 10 ? ` ${work.length > room ? work.slice(0, room - 1) + "…" : work}.` : "";
@@ -87,8 +89,9 @@ export async function processInvoice(allowedToSend: (estimate: unknown) => boole
       },
     });
     await db().query(
-      `UPDATE invoices SET status = $2, pay_link = $3, error = $4, updated_at = now() WHERE id = $1`,
-      [job.id, res.sent ? "sent" : "waiting", res.payLink ?? null, res.sent ? null : locked ? "Test run only (test lock is on)" : "Test run only (nothing sent)"]
+      `UPDATE invoices SET status = $2, pay_link = $3, error = $4, clover_invoice_number = $5,
+         sent_at = CASE WHEN $2 = 'sent' THEN now() ELSE sent_at END, updated_at = now() WHERE id = $1`,
+      [job.id, res.sent ? "sent" : "waiting", res.payLink ?? null, res.sent ? null : locked ? "Test run only (test lock is on)" : "Test run only (nothing sent)", res.cloverNumber ?? null]
     );
     await logEvent(job.estimate_id, res.sent ? "invoice_sent" : "invoice_test_run", { kind: job.kind, total: job.total_cents, payLink: !!res.payLink });
   } catch (e) {
@@ -107,37 +110,68 @@ export async function processInvoice(allowedToSend: (estimate: unknown) => boole
  * accepted. Records it, and sends the deposit invoice right away if the merchant chose that.
  */
 let lastCheck = 0;
+/**
+ * Every few minutes, per store: has the customer accepted an estimate we sent, and has an invoice we
+ * sent been paid? A paid deposit pencils in the install (for stores that book installs).
+ */
 export async function checkAcceptances(): Promise<boolean> {
   if (Date.now() - lastCheck < config.acceptCheckMs) return false;
   lastCheck = Date.now();
-  const { rows } = await db().query<{ id: string; num: string; merchant_id: number }>(
+  const est = (await db().query<{ id: string; num: string; merchant_id: number }>(
     `SELECT id, clover_estimate_number AS num, merchant_id FROM estimates
      WHERE status = 'sent' AND accepted_at IS NULL AND clover_estimate_number IS NOT NULL AND merchant_id IS NOT NULL
-       AND coalesce(error, '') NOT LIKE 'dry run%' AND coalesce(sent_at, updated_at) > now() - interval '45 days'
-     ORDER BY merchant_id`
-  );
-  if (!rows.length) return false;
+       AND coalesce(error, '') NOT LIKE 'dry run%' AND coalesce(sent_at, updated_at) > now() - interval '45 days'`
+  )).rows;
+  const inv = (await db().query<{ id: string; estimate_id: string; kind: string; total_cents: number; num: string | null; customer: string; merchant_id: number }>(
+    `SELECT i.id, i.estimate_id, i.kind, i.total_cents, i.clover_invoice_number AS num,
+            coalesce(e.estimate->'customer'->>'name', '') AS customer, e.merchant_id
+     FROM invoices i JOIN estimates e ON e.id = i.estimate_id
+     WHERE i.status = 'sent' AND e.merchant_id IS NOT NULL AND coalesce(i.sent_at, i.updated_at) > now() - interval '120 days'`
+  )).rows;
+  if (!est.length && !inv.length) return false;
   for (const store of await loadStores()) {
-    const mine = rows.filter((r) => r.merchant_id === store.id);
-    if (!mine.length || signedIn.get(store.id) === false) continue;
+    const myEst = est.filter((r) => r.merchant_id === store.id);
+    const myInv = inv.filter((r) => r.merchant_id === store.id);
+    if ((!myEst.length && !myInv.length) || signedIn.get(store.id) === false) continue;
     await useStore(store);
     const page = await newPage();
     try {
       if (!(await checkSession(page))) { signedIn.set(store.id, false); continue; }
       await assertRightStore(page);
-      const statuses = await readEstimateStatuses(page);
-      for (const r of mine) {
-        const st = statuses.get(r.num);
-        await db().query(`UPDATE estimates SET checked_at = now() WHERE id = $1`, [r.id]);
-        if (!st || !/accepted|converted/i.test(st)) continue;
-        await db().query(`UPDATE estimates SET accepted_at = now() WHERE id = $1 AND accepted_at IS NULL`, [r.id]);
-        await logEvent(r.id, "customer_accepted", { cloverNumber: r.num });
-        if (config.depositAutoSend) {
-          await db().query(`UPDATE invoices SET status = 'approved', updated_at = now() WHERE estimate_id = $1 AND kind = 'deposit' AND status = 'waiting'`, [r.id]);
+      if (myEst.length) {
+        const statuses = await readEstimateStatuses(page);
+        for (const r of myEst) {
+          const st = statuses.get(r.num);
+          await db().query(`UPDATE estimates SET checked_at = now() WHERE id = $1`, [r.id]);
+          if (!st || !/accepted|converted/i.test(st)) continue;
+          await db().query(`UPDATE estimates SET accepted_at = now() WHERE id = $1 AND accepted_at IS NULL`, [r.id]);
+          await logEvent(r.id, "customer_accepted", { cloverNumber: r.num });
+          if (config.depositAutoSend) {
+            await db().query(`UPDATE invoices SET status = 'approved', updated_at = now() WHERE estimate_id = $1 AND kind = 'deposit' AND status = 'waiting'`, [r.id]);
+          }
+        }
+      }
+      if (myInv.length) {
+        const rows = await readInvoiceRows(page);
+        const claimed = new Set<string>();
+        for (const r of myInv) {
+          // Prefer Clover's invoice number; otherwise customer + amount (oldest unclaimed match).
+          const row = (r.num && rows.find((x) => x.number === r.num))
+            || matchInvoiceRows(rows, r.customer, r.total_cents).filter((x) => !claimed.has(x.number || x.reference)).pop();
+          if (!row) continue;
+          claimed.add(row.number || row.reference);
+          if (!r.num && row.number) await db().query(`UPDATE invoices SET clover_invoice_number = $2 WHERE id = $1`, [r.id, row.number]);
+          if (!isPaidStatus(row.status)) continue;
+          const upd = await db().query(
+            `UPDATE invoices SET status = 'paid', paid_at = now(), updated_at = now() WHERE id = $1 AND status = 'sent'`, [r.id]
+          );
+          if (!upd.rowCount) continue;
+          await logEvent(r.estimate_id, "invoice_paid", { kind: r.kind, total: r.total_cents, cloverNumber: row.number });
+          if (r.kind === "deposit") await planInstall(r.estimate_id, new Date());
         }
       }
     } catch (e) {
-      console.error(`[accept check] ${store.name}:`, e instanceof Error ? e.message : e);
+      console.error(`[clover check] ${store.name}:`, e instanceof Error ? e.message : e);
     } finally {
       await page.close().catch(() => {});
     }

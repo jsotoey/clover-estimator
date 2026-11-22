@@ -21,8 +21,10 @@ export function describe(r: RecentItem): { tone: Tone; tag: string; sub: string;
   if (r.status !== "sent") return { tone: "plain", tag: r.status, sub: "", group: "other" };
   if (r.error?.startsWith("dry run")) return { tone: "plain", tag: "Test", sub: "Test run, nothing sent", group: "other" };
   if (inv.some((i) => i.status === "failed")) return { tone: "bad", tag: "Needs you", sub: "An invoice didn't go through", group: "needs" };
-  if (inv.length && inv.every((i) => i.status === "paid_in_person")) return { tone: "good", tag: "Paid", sub: "Paid in person", group: "paid" };
-  const sent = inv.filter((i) => i.status === "sent" || i.status === "paid_in_person");
+  if (inv.length && inv.every((i) => i.status === "paid_in_person" || i.status === "paid")) return { tone: "good", tag: "Paid", sub: "Paid in full", group: "paid" };
+  const dep = inv.find((i) => i.kind === "deposit");
+  if (dep && (dep.status === "paid" || dep.status === "paid_in_person")) return { tone: "good", tag: "Deposit paid", sub: "Install next", group: "waiting" };
+  const sent = inv.filter((i) => i.status === "sent" || i.status === "paid_in_person" || i.status === "paid");
   if (sent.length) {
     const lastSent = sent[sent.length - 1];
     return { tone: "warn", tag: "Invoiced", sub: `${lastSent.kind === "deposit" ? "Deposit" : "Balance"} invoice sent`, group: "waiting" };

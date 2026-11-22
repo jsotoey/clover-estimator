@@ -27,8 +27,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const inv = sentForReal
     ? (await db().query(
-        `SELECT kind, status, total_cents, pay_link, error, clover_invoice_number, updated_at FROM invoices WHERE estimate_id = $1 ORDER BY kind DESC`, [id]
-      )).rows.map((r) => ({ kind: r.kind, status: r.status, totalCents: r.total_cents, payLink: r.pay_link, error: r.error, number: r.clover_invoice_number, updatedAt: r.updated_at }))
+        `SELECT kind, status, total_cents, pay_link, error, clover_invoice_number, updated_at, paid_at FROM invoices WHERE estimate_id = $1 ORDER BY kind DESC`, [id]
+      )).rows.map((r) => ({ kind: r.kind, status: r.status, totalCents: r.total_cents, payLink: r.pay_link, error: r.error, number: r.clover_invoice_number, updatedAt: r.updated_at, paidAt: r.paid_at }))
     : [];
   const meta = await db().query<{ accepted_at: string | null; sent_at: string | null }>(`SELECT accepted_at, sent_at FROM estimates WHERE id = $1`, [id]);
   return Response.json({
@@ -36,6 +36,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     acceptedAt: meta.rows[0]?.accepted_at ?? null,
     sentAt: meta.rows[0]?.sent_at ?? null,
     invoices: inv,
+    install: (await db().query(
+      `SELECT i.install_date::text AS "date", i.earliest_date::text AS "earliest", i.status, i.materials, i.error, c.name AS crew
+       FROM installs i LEFT JOIN crews c ON c.id = i.crew_id WHERE i.estimate_id = $1`, [id]
+    ).catch(() => ({ rows: [] }))).rows[0] ?? null,
     signInOpen: login.rowCount! > 0,
     id: e.id,
     status: e.status,

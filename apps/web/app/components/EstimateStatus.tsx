@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { SectionLabel, card, btnPrimary, btnSecondary, btnDanger, money, fmtWhen, fmtDay } from "./ui";
 
-export interface InvoiceInfo { kind: "deposit" | "balance"; status: string; totalCents: number; payLink: string | null; error: string | null; updatedAt?: string }
+export interface InvoiceInfo { kind: "deposit" | "balance"; status: string; totalCents: number; payLink: string | null; error: string | null; updatedAt?: string; paidAt?: string | null }
+export interface InstallInfo { date: string; earliest: string; status: string; materials: string; error: string | null; crew: string | null }
 export interface StatusData {
-  sentForReal?: boolean; acceptedAt?: string | null; sentAt?: string | null; invoices?: InvoiceInfo[];
+  sentForReal?: boolean; acceptedAt?: string | null; sentAt?: string | null; invoices?: InvoiceInfo[]; install?: InstallInfo | null;
   estimate?: { customer?: { name?: string; phone?: string; job_address?: string }; service_date?: string; delivery?: string } | null;
   computed?: { totalCents?: number } | null;
   status: string; signInOpen?: boolean; error: string | null; cloverEstimateNumber: string | null; screenshots: string[];
@@ -59,10 +60,26 @@ function invoiceStep(inv: InvoiceInfo, accepted: boolean, name: string | undefin
   switch (inv.status) {
     case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}</Step>;
     case "paid_in_person": return <Step key={inv.kind} state="done" title={`${label} · paid in person`} />;
+    case "paid": return <Step key={inv.kind} state="done" title={`${label} · paid`} sub={inv.paidAt ? `Clover shows it paid · ${fmtWhen(inv.paidAt)}` : "Clover shows it paid"} />;
     case "approved": case "sending": return <Step key={inv.kind} state="now" title={label} sub="Putting the invoice into Clover…" />;
     case "failed": return <Step key={inv.kind} state="bad" title={`${label} · didn't go through`} sub={inv.error ?? "Clover didn't take it. Nothing was sent. Tap Try again below."} />;
     default: return <Step key={inv.kind} state="todo" title={label}
       sub={inv.kind === "deposit" ? (accepted ? "Ready to send" : "Send now, or once they accept") : "Send it when the job is done"} />;
+  }
+}
+
+function installStep(i: InstallInfo) {
+  const when = `${fmtDay(i.date)}${i.crew ? ` · ${i.crew}` : ""}`;
+  const mat = i.materials === "ordered" ? "Waiting on materials" : i.materials === "delayed" ? "Materials delayed" : i.materials === "arrived" ? "Materials in" : "";
+  switch (i.status) {
+    case "confirmed": return <Step state="done" title={`Install confirmed · ${when}`} sub={mat || undefined} />;
+    case "done": return <Step state="done" title={`Installed · ${when}`} />;
+    case "failed": return <Step state="bad" title={`Install not booked · ${when}`} sub={i.error ?? "Clover didn't take the appointment. Nothing was booked."} />;
+    case "cancelled": return null;
+    case "tentative": case "to_confirm":
+      return <Step state="now" title={`Install penciled in · ${when}`} sub={`Tentative${mat ? `, ${mat.toLowerCase()}` : ""}. Booked in Clover; the customer got the date.`} />;
+    default:
+      return <Step state="now" title={`Install planned · ${when}`} sub={`Earliest date after the materials lead time. Booking it in Clover…`} />;
   }
 }
 
@@ -160,8 +177,13 @@ export function StatusBody({ id, data }: { id: string; data: StatusData }) {
         {data.acceptedAt
           ? <Step state="done" title="Customer accepted" sub={fmtWhen(data.acceptedAt)} />
           : <Step state="now" title="Waiting for the customer to accept" sub="Checked every few minutes" />}
-        {invoices.map((inv) => invoiceStep(inv, !!data.acceptedAt, c?.name, c?.phone))}
-        {invoices.length > 0 && invoices.every((i) => i.status === "paid_in_person") && <Step state="done" title="All paid" />}
+        {invoices.map((inv) => (
+          <div key={inv.kind}>
+            {invoiceStep(inv, !!data.acceptedAt, c?.name, c?.phone)}
+            {inv.kind === "deposit" && data.install && installStep(data.install)}
+          </div>
+        ))}
+        {invoices.length > 0 && invoices.every((i) => i.status === "paid_in_person" || i.status === "paid") && <Step state="done" title="All paid" />}
       </section>
     );
   }

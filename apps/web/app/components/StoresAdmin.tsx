@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import StoreSwitcher from "./StoreSwitcher";
+import StoreSettings from "./StoreSettings";
 import { TopBar, BottomNav, SectionLabel, card, btnPrimary, btnSecondary, fmtWhen } from "./ui";
 
 type Store = { id: number; name: string; cloverName: string; taxRate: number; depositPercent: number; lastSignIn: string | null };
@@ -11,6 +12,7 @@ export default function StoresAdmin({ businessName }: { businessName: string }) 
   const [stores, setStores] = useState<Store[] | null>(null);
   const [current, setCurrent] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", cloverName: "", taxRate: "6.625", depositPercent: "50", pin: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -61,10 +63,13 @@ export default function StoresAdmin({ businessName }: { businessName: string }) 
               </div>
               {s.id === current && <span className="shrink-0 rounded-full bg-brand-soft px-2 py-[3px] text-[11px] font-bold text-brand-dark">Current</span>}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button onClick={() => switchTo(s.id)} className="h-11 rounded-xl border border-edge bg-white text-sm font-semibold">Open</button>
-              <button onClick={() => switchTo(s.id, "/clover")} className="h-11 rounded-xl border border-edge bg-white text-sm font-semibold">Clover sign-in</button>
+              <button onClick={() => switchTo(s.id, "/clover")} className="h-11 rounded-xl border border-edge bg-white text-sm font-semibold">Clover</button>
+              <button onClick={() => setEditing(editing === s.id ? null : s.id)} aria-expanded={editing === s.id}
+                className={`h-11 rounded-xl border text-sm font-semibold ${editing === s.id ? "border-brand bg-brand-soft text-brand-dark" : "border-edge bg-white"}`}>Settings</button>
             </div>
+            {editing === s.id && <StoreSettings id={s.id} onSaved={load} />}
           </section>
         ))}
 

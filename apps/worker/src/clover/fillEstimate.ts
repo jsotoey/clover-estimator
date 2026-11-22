@@ -571,7 +571,7 @@ export interface InvoiceFill {
 export async function fillInvoice(
   page: Page, rawEstimate: unknown, inv: InvoiceFill,
   opts: { dryRun: boolean; taxRate?: number; onStep?: (step: string, url: string) => Promise<void> }
-): Promise<{ sent: boolean; cloverTotalCents: number; payLink?: string }> {
+): Promise<{ sent: boolean; cloverTotalCents: number; payLink?: string; cloverNumber?: string }> {
   const estimate: Estimate = EstimateSchema.parse(rawEstimate);
   const step = async (name: string) => {
     const url = await capture(page, `invoice-${name}`, { aria: true });
@@ -632,7 +632,60 @@ export async function fillInvoice(
     confirmed = after > before;
   }
   if (!confirmed) throw new FillError("Clicked Send on the invoice, but couldn't confirm it in Clover. Check Clover's Invoices page before retrying.");
-  return { sent: true, cloverTotalCents: cloverTotal, payLink };
+  // Note Clover's invoice number (newest matching row), so paid detection can find this exact invoice later.
+  const rows = await readInvoiceRows(page).catch(() => [] as InvoiceRow[]);
+  const mine = matchInvoiceRows(rows, estimate.customer.name, cloverTotal);
+  return { sent: true, cloverTotalCents: cloverTotal, payLink, cloverNumber: mine[0]?.number || undefined };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Clover's Invoices list (/invoice-manager), mapped from a look-only check on Nov 22:
+//   table "Invoices", sorted by Sent date (newest first), columns:
+//   Reference # | Invoice # | Customer | (blank) | Total | Sent date | Due date | Status | (blank)
+// ---------------------------------------------------------------------------------------------
+export interface InvoiceRow { reference: string; number: string; customer: string; totalCents: number | null; sent: string; status: string }
+
+/** Turn the table's header texts and row cell texts into rows, by column name (order may change). */
+export function parseInvoiceTable(headers: string[], rows: string[][]): InvoiceRow[] {
+  const col = (re: RegExp) => headers.findIndex((h) => re.test(h));
+  const iRef = col(/reference/i), iNum = col(/invoice\s*#/i), iCust = col(/customer/i), iTot = col(/^total/i),
+    iSent = col(/sent date/i), iStatus = col(/status/i);
+  const cell = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
+  return rows
+    .filter((r) => r.length >= 3)
+    .map((r) => {
+      const t = cell(r, iTot).match(/-?\$?([\d,]+\.\d{2})/);
+      return {
+        reference: cell(r, iRef), number: cell(r, iNum), customer: cell(r, iCust),
+        totalCents: t ? Math.round(Number(t[1].replace(/,/g, "")) * 100) : null,
+        sent: cell(r, iSent), status: cell(r, iStatus),
+      };
+    });
+}
+
+/** Rows for this customer (first name match) and amount (within a cent), newest first as Clover lists them. */
+export function matchInvoiceRows(rows: InvoiceRow[], customerName: string, totalCents: number): InvoiceRow[] {
+  const first = customerName.trim().replace(/^test\s+/i, "").split(/\s+/)[0]?.toLowerCase() ?? "";
+  return rows.filter((r) => r.totalCents !== null && Math.abs(r.totalCents - totalCents) <= 1 && (!first || r.customer.toLowerCase().includes(first)));
+}
+
+/** "Paid" counts; "Unpaid", "Partially paid", "Overdue" don't. */
+export const isPaidStatus = (s: string) => /\bpaid\b/i.test(s) && !/unpaid|partial|not paid/i.test(s);
+
+export async function readInvoiceRows(page: Page): Promise<InvoiceRow[]> {
+  await page.goto(`${config.cloverBaseUrl}/invoice-manager`, { waitUntil: "domcontentloaded", timeout: T.nav });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.getByRole("table", { name: /invoices/i }).waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(800);
+  // Passed as text: the TypeScript runner adds helper names to inline functions that don't exist in the page.
+  const { headers, rows } = (await page.evaluate(`(() => {
+    const t = Array.from(document.querySelectorAll("table")).find((x) => /invoices/i.test(x.getAttribute("aria-label") || x.querySelector("caption")?.textContent || ""));
+    if (!t) return { headers: [], rows: [] };
+    const headers = Array.from(t.querySelectorAll("thead th, [role=columnheader]")).map((h) => (h.textContent || "").replace(/sort by \\w+/i, "").trim());
+    const rows = Array.from(t.querySelectorAll("tbody tr")).map((tr) => Array.from(tr.querySelectorAll("td, th")).map((c) => (c.textContent || "").trim()));
+    return { headers, rows };
+  })()`)) as { headers: string[]; rows: string[][] };
+  return parseInvoiceTable(headers, rows);
 }
 
 /** How many invoices in Clover's list are for this customer and amount. */
