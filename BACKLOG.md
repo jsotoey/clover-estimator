@@ -23,6 +23,23 @@ Open questions (workflow, decide with the merchants):
 - [ ] What happens to the start date while waiting up to 2 weeks for the materials price: book it tentatively, or only after the update is accepted?
 - [ ] Does Clover keep the customer's original acceptance after an edit, or does the edited estimate need a fresh accept? (check in Clover)
 
+## Scheduling and booking deposits (Jon, Nov 21)
+The app has to fit most field services, not just painters. Scheduling raises its own workflow:
+- **Mechanic case:** a customer books a drop-off slot on the website and **pays a deposit just to get on the calendar**, before any estimate exists. The estimate comes after the inspection, and the booking deposit should count toward the job.
+- **Painter/contractor case:** estimate first, deposit on acceptance, then the job gets scheduled (sometimes after waiting on materials, see above).
+
+What Clover offers (researched Nov 21, to confirm inside a real account):
+- Clover's own appointments (services catalog, merchant and online customer booking, email reminders) come with the **Services Growth** plan, not the lower plans. M&J already has Estimates, which is a Services Growth feature, so they likely have appointments too: check with the look-only scout.
+- Not confirmed: whether Clover's own online booking can take a **deposit**.
+- App Market options that say they take deposits at booking: **Book Online by Zoomifi** (works on any Clover plan, about $4.99/mo), **Cojilio**. BookedBy is salon/spa-focused.
+
+Plan:
+- [ ] Don't build our own scheduler. Use Clover's appointments (or a booking app) and have our app read the calendar.
+- [ ] Scout M&J's Clover (look only) for Appointments / online booking, and whether a booking can require a deposit.
+- [ ] Map the shared workflow with its variants: Book (+ deposit?) → Estimate → Approve → Deposit → Schedule → Work → Balance. Booking-first (mechanic), estimate-first (contractor), materials TBD.
+- [ ] Credit a booking deposit on the later estimate/invoices so the customer isn't charged twice.
+- [ ] After a deposit is paid, offer to put the job on the Clover calendar (start date from the estimate).
+
 ## Customer contact
 - [ ] **Text delivery for estimates.** Clover only texts customers with text consent on their profile. New customers created by the app get consent ticked when sending by text; existing customers (e.g. Jon Soto) need it ticked in Clover. Consider having the worker tick it when editing an existing customer, with the merchant's say-so.
 - [ ] **Text the invoice link.** Clover invoices are email-only; the app shows "Text the payment link" only when Clover hands back a share link. Confirm whether Clover gives one, otherwise find it in the sent invoice.
