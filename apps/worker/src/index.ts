@@ -3,6 +3,7 @@ import { newPage, saveSession, useStore } from "./browser";
 import { checkSession, assertRightStore } from "./clover/session";
 import { loadStores, signedIn, storeById } from "./stores";
 import { processInstall } from "./installPlan";
+import { runSetupTask } from "./scout";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { runScoutTask } from "./scout";
@@ -181,6 +182,7 @@ async function main() {
       if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
       if (await processInstall(allowedToSend).catch((e) => { console.error("install error", e); return false; })) continue;
       if (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; })) continue;
+      if (await runSetupTask().catch((e) => { console.error("setup error", e); return false; })) continue;
       if (await runScoutTask().catch((e) => { console.error("scout error", e); return false; })) continue;
       // While idle, visit each signed-in store's Clover every 10 minutes so an idle sign-out doesn't happen.
       // Not for signed-out stores: loading Clover's login page over and over only adds suspicion.

@@ -101,3 +101,54 @@ export function redactAria(aria: string): string {
     })
     .join("\n");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Store setup tasks (kind 'setup'): add crew employees and the bookable install service in the
+// store's own Clover. Queued by the admin. Payload: {actions: [{type:"employee",name,email} | {type:"service",name,minutes}]}
+// ---------------------------------------------------------------------------------------------
+import { createEmployee, createService } from "./clover/setup";
+import { checkSession, assertRightStore } from "./clover/session";
+import { capture } from "./browser";
+
+type SetupAction = { type: "employee"; name: string; email: string } | { type: "service"; name: string; minutes?: number };
+
+export async function runSetupTask(): Promise<boolean> {
+  const { rows } = await db().query<{ id: number; payload: { actions?: SetupAction[] }; merchant_id: number | null }>(
+    `UPDATE worker_tasks SET status = 'running' WHERE id = (
+       SELECT id FROM worker_tasks WHERE status = 'queued' AND kind = 'setup' AND merchant_id IS NOT NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
+     ) RETURNING id, payload, merchant_id`
+  );
+  const task = rows[0];
+  if (!task) return false;
+  const store = await storeById(task.merchant_id);
+  const results: string[] = [];
+  let failed = false;
+  if (store) {
+    await useStore(store);
+    const page = await newPage();
+    try {
+      if (!(await checkSession(page))) throw new Error("This store isn't signed in to Clover");
+      await assertRightStore(page);
+      for (const a of task.payload.actions ?? []) {
+        try {
+          const r = a.type === "employee" ? await createEmployee(page, a.name, a.email) : await createService(page, a.name, a.minutes ?? 120);
+          results.push(`${a.type} "${a.name}": ${r}`);
+        } catch (e) {
+          failed = true;
+          results.push(`${a.type} "${a.name}": FAILED ${e instanceof Error ? e.message : e}`);
+          const shot = await capture(page, `setup-failed`, { aria: true }).catch(() => "");
+          if (shot) results.push(`screenshot ${shot}`);
+        }
+      }
+    } catch (e) {
+      failed = true;
+      results.push(`FAILED ${e instanceof Error ? e.message : e}`);
+    } finally {
+      await page.close().catch(() => {});
+    }
+  } else { failed = true; results.push("store not found"); }
+  await db().query(`UPDATE worker_tasks SET status = $2, result = $3, finished_at = now() WHERE id = $1`,
+    [task.id, failed ? "failed" : "done", JSON.stringify({ results })]);
+  await logEvent(null, "store_setup", { store: store?.slug, results });
+  return true;
+}
