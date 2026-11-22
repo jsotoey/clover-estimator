@@ -40,6 +40,15 @@ Plan:
 - [ ] Credit a booking deposit on the later estimate/invoices so the customer isn't charged twice.
 - [ ] After a deposit is paid, offer to put the job on the Clover calendar (start date from the estimate).
 
+## Deposit paid → tentative install (Leal Glass, Nov 22)
+Flow: Measure → Estimate → Accepted → Deposit paid → glass ordered → tentative install booked → glass in → install confirmed → installed → balance.
+- [ ] **Paid detection:** worker reads Clover's Invoices list and marks deposit/balance Paid (also covers "paid status").
+- [ ] **Tentative install on deposit paid:** book a Clover appointment at deposit date + the store's material lead time (e.g. 3 weeks), on the crew's calendar (Team 1 / Team 2 as Clover employees), marked "Tentative, pending glass". Clover's confirmation email is the customer's notice. Per-store lead time setting; per supplier/item later.
+- [ ] **Glass in → confirm:** office taps Glass in (keep the date) or Delayed (pick a new date); the bot updates the Clover appointment so Clover sends the updated confirmation.
+- [ ] **Per-store deposit message** on the deposit invoice (Leal: "we're ordering your glass, your install is penciled in and we'll confirm when it arrives"; painter: "this locks in your start date").
+- [ ] **Look-only check of Leal's Clover first:** appointment screens, whether appointment notes/title show in the customer's confirmation email, how to pick an employee/crew, whether the calendar shows open slots, and any customer messaging Clover can send.
+- [ ] Jobs board (desktop + phone): one column per step, one next-action button per job; app notifications (free) + email backup, no SMS.
+
 ## Customer contact
 - [ ] **Text delivery for estimates.** Clover only texts customers with text consent on their profile. New customers created by the app get consent ticked when sending by text; existing customers (e.g. Jon Soto) need it ticked in Clover. Consider having the worker tick it when editing an existing customer, with the merchant's say-so.
 - [ ] **Text the invoice link.** Clover invoices are email-only; the app shows "Text the payment link" only when Clover hands back a share link. Confirm whether Clover gives one, otherwise find it in the sent invoice.
