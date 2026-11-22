@@ -292,18 +292,21 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
             <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
             <label htmlFor="msg" className="sr-only">Message</label>
             <textarea id="msg" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} rows={1}
-              placeholder={mic.listening ? "Listening… tap the mic to stop" : changing ? "Tell me what to change" : mic.supported ? "Type, or tap the mic to talk" : "Describe the job"}
+              placeholder={mic.listening ? "Listening… tap the red button to stop" : changing ? "Tell me what to change" : mic.supported ? "Type, or tap the mic to talk" : "Describe the job"}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-edge px-3 py-[10px] text-base" />
-            {mic.supported && (mic.listening || !canSend) ? (
+            {mic.supported && (
               <button onClick={() => (mic.listening ? mic.stop() : mic.start(input))} disabled={busy}
                 aria-label={mic.listening ? "Stop listening" : "Talk"} aria-pressed={mic.listening}
-                className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full disabled:opacity-50 ${mic.listening ? "ce-recording bg-bad" : "bg-brand"}`}>
+                className={`flex shrink-0 items-center justify-center rounded-full disabled:opacity-50 ${
+                  mic.listening ? "ce-recording h-[52px] w-[52px] bg-bad"
+                  : canSend ? "h-11 w-11 border border-edge bg-white text-brand" : "h-[52px] w-[52px] bg-brand text-white"}`}>
                 {mic.listening
                   ? <span aria-hidden="true" className="h-4 w-4 rounded-[3px] bg-white" />
-                  : <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>}
+                  : <svg aria-hidden="true" width={canSend ? 20 : 24} height={canSend ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>}
               </button>
-            ) : (
+            )}
+            {(!mic.supported || (canSend && !mic.listening)) && (
               <button onClick={() => send()} disabled={busy || !canSend} aria-label="Send"
                 className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-brand disabled:opacity-40">
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" /></svg>
