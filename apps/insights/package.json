@@ -1,0 +1,13 @@
+{
+  "name": "insights",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "weekly": "tsx src/run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": { "@anthropic-ai/sdk": "^1.11.0" },
+  "devDependencies": { "@types/node": "^22", "tsx": "^4", "typescript": "^5", "vitest": "^5.1.1" }
+}
