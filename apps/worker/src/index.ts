@@ -2,7 +2,7 @@ import { config } from "./config";
 import { newPage, saveSession, useStore } from "./browser";
 import { checkSession, assertRightStore } from "./clover/session";
 import { loadStores, signedIn, storeById } from "./stores";
-import { processInstall } from "./installPlan";
+import { processInstall, planMissingInstalls } from "./installPlan";
 import { runSetupTask } from "./scout";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
@@ -180,6 +180,7 @@ async function main() {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
       if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
+      await planMissingInstalls().catch((e) => console.error("install sweep error", e));
       if (await processInstall(allowedToSend).catch((e) => { console.error("install error", e); return false; })) continue;
       if (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; })) continue;
       if (await runSetupTask().catch((e) => { console.error("setup error", e); return false; })) continue;

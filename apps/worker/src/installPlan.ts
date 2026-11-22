@@ -111,3 +111,23 @@ export async function processInstall(allowedToSend: (estimate: unknown) => boole
   }
   return true;
 }
+
+/**
+ * Safety net (DB only, cheap): any deposit marked paid (online or in person) for a store that books installs,
+ * without an install yet, gets one planned. Covers "Paid in person" taps and anything missed earlier.
+ */
+let lastSweep = 0;
+export async function planMissingInstalls(): Promise<boolean> {
+  if (Date.now() - lastSweep < 60_000) return false;
+  lastSweep = Date.now();
+  const { rows } = await db().query<{ estimate_id: string; paid: string }>(
+    `SELECT i.estimate_id, coalesce(i.paid_at, i.updated_at) AS paid
+     FROM invoices i JOIN estimates e ON e.id = i.estimate_id JOIN merchants m ON m.id = e.merchant_id
+     WHERE i.kind = 'deposit' AND i.status IN ('paid','paid_in_person') AND m.book_installs
+       AND NOT EXISTS (SELECT 1 FROM installs x WHERE x.estimate_id = i.estimate_id)
+       AND coalesce(i.paid_at, i.updated_at) > now() - interval '30 days'
+     LIMIT 20`
+  );
+  for (const r of rows) await planInstall(r.estimate_id, new Date(r.paid));
+  return rows.length > 0;
+}
