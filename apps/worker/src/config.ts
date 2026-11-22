@@ -23,6 +23,9 @@ export const config = {
   headless: bool(process.env.HEADLESS, false),
   // On a Mac/PC: the merchant signs in with their own normal Chrome (nothing attached), the worker uses it after.
   localSignin: bool(process.env.LOCAL_SIGNIN, false),
+  // With local sign-in (a separate, normal Chrome window for logging in), the worker's own Chrome runs hidden
+  // in the background so it doesn't pop up on the computer. WORKER_SHOW_BROWSER=true shows it (for debugging).
+  showBrowser: bool(process.env.WORKER_SHOW_BROWSER, false),
   chromeChannel: process.env.CHROME_CHANNEL || undefined, // "chrome" = the installed Google Chrome
   chromeApp: process.env.CHROME_APP ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   liveLoginTimeoutMs: 30 * 60 * 1000, // time to finish a sign-in from the phone

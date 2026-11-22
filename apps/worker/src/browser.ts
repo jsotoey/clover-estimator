@@ -66,7 +66,7 @@ export function getContext(): Promise<BrowserContext> {
     quietChromePrompts(dir);
     shared = chromium
       .launchPersistentContext(dir, {
-        headless: config.headless,
+        headless: config.headless || (config.localSignin && !config.showBrowser),
         // With the installed Google Chrome, use the Mac's real keychain so a sign-in done in normal Chrome carries over.
         ...(config.chromeChannel ? { channel: config.chromeChannel, ignoreDefaultArgs: ["--use-mock-keychain"] } : {}),
         executablePath: process.env.CHROME_PATH || undefined,
