@@ -66,6 +66,11 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
       name: String(x.name ?? "").trim().slice(0, 60),
       skills: (Array.isArray(x.skills) ? x.skills : []).map((k) => String(k).trim().toLowerCase().slice(0, 30)).filter(Boolean).slice(0, 20),
     })).filter((x) => x.name);
+    const badCrew = crews.find((x) => !/^[A-Za-z][A-Za-z ]{2,}$/.test(x.name));
+    if (badCrew) {
+      await client.query("ROLLBACK");
+      return Response.json({ error: `Clover only accepts crew names with letters and spaces (at least 3 letters, no numbers): "${badCrew.name}". Try "Team One".` }, { status: 400 });
+    }
     await client.query(`UPDATE crews SET active = false WHERE merchant_id = $1`, [id]);
     for (const x of crews) await client.query(
       `INSERT INTO crews (merchant_id, name, skills) VALUES ($1,$2,$3)

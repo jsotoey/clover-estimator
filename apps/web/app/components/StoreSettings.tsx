@@ -90,11 +90,11 @@ export default function StoreSettings({ id, onSaved }: { id: number; onSaved?: (
           ))}
           <button onClick={() => set("suppliers", [...s.suppliers, { name: "", leadDays: s.leadDays || 21 }])} className="self-start text-sm font-semibold text-brand underline">Add a supplier</button>
 
-          <p className="text-sm font-semibold">Crews <span className="font-normal text-muted">(named exactly like the employee in Clover)</span></p>
+          <p className="text-sm font-semibold">Crews <span className="font-normal text-muted">(named exactly like the employee in Clover; letters only, e.g. Team One)</span></p>
           {s.crews.map((x, i) => (
             <div key={i} className="flex flex-col gap-1.5 rounded-xl bg-paper p-2.5">
               <div className="flex gap-2">
-                <input aria-label="Crew name" className={`${small} min-w-0 flex-1`} value={x.name} placeholder="Team 1"
+                <input aria-label="Crew name" className={`${small} min-w-0 flex-1`} value={x.name} placeholder="Team One"
                   onChange={(e) => set("crews", s.crews.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))} />
                 <button aria-label="Remove crew" onClick={() => { set("crews", s.crews.filter((_, j) => j !== i)); setSkillsText(skillsText.filter((_, j) => j !== i)); }} className="h-11 w-11 rounded-xl text-muted">✕</button>
               </div>

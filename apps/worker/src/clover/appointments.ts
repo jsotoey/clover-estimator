@@ -26,7 +26,7 @@ export interface AppointmentFill {
   note: string;
 }
 
-async function pickOption(page: Page, name: string): Promise<boolean> {
+export async function pickOption(page: Page, name: string): Promise<boolean> {
   const re = new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
   const opt = await firstVisible([
     page.getByRole("option", { name: re }), page.getByRole("menuitem", { name: re }),

@@ -4,6 +4,7 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import { profileDir } from "./session";
 import { config } from "./config";
 import { saveArtifact } from "./artifacts";
+import { redactAria } from "./redact";
 import { activeStore, activeStoreOrNull, setActiveStore, type Store } from "./stores";
 import { ensureProfileForLogin } from "./session";
 
@@ -150,7 +151,8 @@ export async function capture(page: Page, label: string, opts: { html?: boolean;
   const url = await saveArtifact(`${label}.png`, shot, "image/png");
   if (opts.html) await saveArtifact(`${label}.html`, await page.content(), "text/html");
   if (opts.aria) {
-    const aria = await page.locator("body").ariaSnapshot().catch((e) => `ariaSnapshot failed: ${e}`);
+    // Hide anything typed in login/password/code boxes, same as the look-only checks.
+    const aria = redactAria(await page.locator("body").ariaSnapshot().catch((e) => `ariaSnapshot failed: ${e}`));
     await saveArtifact(`${label}.aria.yaml`, `# ${page.url()}\n${aria}`, "text/yaml");
     console.log(`[aria:${label}] ${page.url()}\n${aria}\n[/aria:${label}]`);
   }

@@ -2,6 +2,7 @@ import type { Page } from "playwright";
 import { capture } from "../browser";
 import { config } from "../config";
 import { FillError, firstVisible, must } from "./fillEstimate";
+import { pickOption } from "./appointments";
 
 /**
  * One-time store setup in Clover, run by the worker inside the store's own signed-in session
@@ -64,6 +65,18 @@ export async function createService(page: Page, name: string, minutes: number): 
   await (await must([page.getByRole("textbox", { name: /^name/i })], "the service name box")).fill(name);
   const price = await firstVisible([page.getByRole("textbox", { name: /^price/i })], 2000);
   if (price) { await price.fill("0.00"); await price.press("Tab").catch(() => {}); }
+  // Choosing "Service" adds required "Hours*" and "Minutes*" drop-downs (mapped Nov 22).
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  const pickDropdown = async (label: RegExp, values: string[], what: string) => {
+    const btn = await firstVisible([page.getByRole("button", { name: label }), page.getByRole("combobox", { name: label })], 3000);
+    if (!btn) return;
+    await btn.click();
+    for (const v of values) if (await pickOption(page, v)) return;
+    await page.keyboard.press("Escape").catch(() => {});
+    throw new FillError(`Couldn't set the service ${what} in Clover. See the screenshot.`);
+  };
+  await pickDropdown(/^hours/i, [String(h), String(h).padStart(2, "0"), `${h} hr`, `${h} hour`], "hours");
+  await pickDropdown(/^minutes/i, [String(m), String(m).padStart(2, "0"), `${m} min`], "minutes");
   await capture(page, `setup-service-1`, { aria: true });
   const next = page.getByRole("button", { name: /^next$/i });
   for (let i = 0; i < 10 && !(await next.isEnabled().catch(() => false)); i++) await page.waitForTimeout(300);
@@ -72,8 +85,7 @@ export async function createService(page: Page, name: string, minutes: number): 
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.waitForTimeout(1500);
 
-  // Step 2: duration if asked (hours / minutes boxes or a single duration box).
-  const h = Math.floor(minutes / 60), m = minutes % 60;
+  // Step 2: duration if asked again (hours / minutes boxes or a single duration box).
   const hours = await firstVisible([page.getByRole("textbox", { name: /^hours?$/i }), page.getByRole("spinbutton", { name: /^hours?$/i })], 1500);
   const mins = await firstVisible([page.getByRole("textbox", { name: /^min(ute)?s?$/i }), page.getByRole("spinbutton", { name: /^min(ute)?s?$/i })], 1500);
   if (hours) await hours.fill(String(h));
