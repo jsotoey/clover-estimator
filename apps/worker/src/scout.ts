@@ -93,11 +93,11 @@ async function describe(page: Page) {
 // Store setup tasks (kind 'setup'): add crew employees and the bookable install service in the
 // store's own Clover. Queued by the admin. Payload: {actions: [{type:"employee",name,email} | {type:"service",name,minutes}]}
 // ---------------------------------------------------------------------------------------------
-import { createEmployee, createService } from "./clover/setup";
+import { createEmployee, createService, assignServiceEmployees } from "./clover/setup";
 import { checkSession, assertRightStore } from "./clover/session";
 import { capture } from "./browser";
 
-type SetupAction = { type: "employee"; name: string; email: string } | { type: "service"; name: string; minutes?: number };
+type SetupAction = { type: "employee"; name: string; email: string } | { type: "service"; name: string; minutes?: number } | { type: "assign"; service: string; employees: string[] };
 
 export async function runSetupTask(): Promise<boolean> {
   const { rows } = await db().query<{ id: number; payload: { actions?: SetupAction[] }; merchant_id: number | null }>(
@@ -118,11 +118,13 @@ export async function runSetupTask(): Promise<boolean> {
       await assertRightStore(page);
       for (const a of task.payload.actions ?? []) {
         try {
-          const r = a.type === "employee" ? await createEmployee(page, a.name, a.email) : await createService(page, a.name, a.minutes ?? 120);
-          results.push(`${a.type} "${a.name}": ${r}`);
+          const r = a.type === "employee" ? await createEmployee(page, a.name, a.email)
+            : a.type === "service" ? await createService(page, a.name, a.minutes ?? 120)
+            : await assignServiceEmployees(page, a.service, a.employees);
+          results.push(`${a.type} "${a.type === "assign" ? a.service : a.name}": ${r}`);
         } catch (e) {
           failed = true;
-          results.push(`${a.type} "${a.name}": FAILED ${e instanceof Error ? e.message : e}`);
+          results.push(`${a.type} "${a.type === "assign" ? a.service : a.name}": FAILED ${e instanceof Error ? e.message : e}`);
           const shot = await capture(page, `setup-failed`, { aria: true }).catch(() => "");
           if (shot) results.push(`screenshot ${shot}`);
         }
