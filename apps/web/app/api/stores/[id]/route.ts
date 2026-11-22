@@ -2,13 +2,13 @@ import { db } from "@/lib/db";
 import { getSession, unauthorized } from "@/lib/session";
 
 type Settings = {
-  cloverName: string; depositPercent: number; depositNote: string; leadDays: number; bufferDays: number; bookInstalls: boolean;
+  cloverName: string; depositPercent: number; depositNote: string; leadDays: number; bufferDays: number; bookInstalls: boolean; installService: string; installTime: string;
   suppliers: { name: string; leadDays: number }[]; crews: { name: string; skills: string[] }[];
 };
 
 async function load(id: number): Promise<Settings | null> {
   const m = (await db().query(
-    `SELECT clover_name, name, deposit_percent, deposit_note, lead_days, buffer_days, book_installs FROM merchants WHERE id = $1`, [id]
+    `SELECT clover_name, name, deposit_percent, deposit_note, lead_days, buffer_days, book_installs, install_service, install_time FROM merchants WHERE id = $1`, [id]
   )).rows[0];
   if (!m) return null;
   const suppliers = (await db().query(`SELECT name, lead_days FROM suppliers WHERE merchant_id = $1 AND active ORDER BY name`, [id])).rows;
@@ -16,6 +16,7 @@ async function load(id: number): Promise<Settings | null> {
   return {
     cloverName: m.clover_name || m.name, depositPercent: m.deposit_percent, depositNote: m.deposit_note ?? "",
     leadDays: m.lead_days, bufferDays: m.buffer_days, bookInstalls: m.book_installs,
+    installService: m.install_service, installTime: m.install_time,
     suppliers: suppliers.map((s) => ({ name: s.name, leadDays: s.lead_days })),
     crews: crews.map((c) => ({ name: c.name, skills: c.skills })),
   };
@@ -41,14 +42,18 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   const b = (await req.json().catch(() => ({}))) as Partial<Settings>;
   const note = String(b.depositNote ?? "").trim();
   if (note.length > 120) return Response.json({ error: "Keep the deposit message under 120 characters (Clover notes are short)." }, { status: 400 });
+  const service = String(b.installService ?? "").trim().slice(0, 60) || "Installation";
+  const time = String(b.installTime ?? "").trim().toUpperCase().replace(/^(\d{1,2})(:\d{2})?\s*(AM|PM)$/, (_m, h, mm, ap) => `${Number(h)}${mm ?? ":00"} ${ap}`);
+  if (!/^(1[0-2]|[1-9]):[0-5]\d (AM|PM)$/.test(time)) return Response.json({ error: "Install time looks wrong (like 9:00 AM)" }, { status: 400 });
   const client = await db().connect();
   try {
     await client.query("BEGIN");
     const upd = await client.query(
-      `UPDATE merchants SET clover_name = $2, deposit_percent = $3, deposit_note = $4, lead_days = $5, buffer_days = $6, book_installs = $7
+      `UPDATE merchants SET clover_name = $2, deposit_percent = $3, deposit_note = $4, lead_days = $5, buffer_days = $6, book_installs = $7,
+         install_service = $8, install_time = $9
        WHERE id = $1 AND active`,
       [id, String(b.cloverName ?? "").trim() || null, int(b.depositPercent, 0, 100, 50), note || null,
-       int(b.leadDays, 0, 120, 0), int(b.bufferDays, 0, 30, 2), !!b.bookInstalls]
+       int(b.leadDays, 0, 120, 0), int(b.bufferDays, 0, 30, 2), !!b.bookInstalls, service, time]
     );
     if (!upd.rowCount) { await client.query("ROLLBACK"); return Response.json({ error: "Store not found" }, { status: 404 }); }
     // Lists: keep the ones sent (by name), turn off the rest (installs keep pointing at old rows).

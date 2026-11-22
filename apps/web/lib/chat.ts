@@ -6,7 +6,7 @@ import { ASK_OWNER_TOOL, SUBMIT_ESTIMATE_TOOL, handleSubmitEstimate, parseAskOwn
 import type { Estimate, PricingResult, PaymentProgram } from "@ce/core";
 
 /** The store's own terms (from its row in merchants). Defaults come from env for tests and old setups. */
-export interface StoreTerms { depositPercent: number; validDays: number; taxable: boolean; taxRate: number; paymentProgram: PaymentProgram }
+export interface StoreTerms { depositPercent: number; validDays: number; taxable: boolean; taxRate: number; paymentProgram: PaymentProgram; suppliers?: { name: string; leadDays: number }[] }
 
 function todayNY(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -15,12 +15,17 @@ function weekdayNY(): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" }).format(new Date());
 }
 
-export function buildSystemPrompt(t: Pick<StoreTerms, "depositPercent" | "validDays" | "taxable"> = env.terms()): string {
+export function buildSystemPrompt(t: Pick<StoreTerms, "depositPercent" | "validDays" | "taxable" | "suppliers"> = env.terms()): string {
   const prompt = SYSTEM_PROMPT
     .replaceAll("{{DEPOSIT}}", String(t.depositPercent))
     .replaceAll("{{VALID_DAYS}}", String(t.validDays))
     .replaceAll("{{TAX}}", t.taxable ? "yes, the business's sales tax applies" : "no");
-  return `${prompt}\n\nToday is ${weekdayNY()}, ${todayNY()} (America/New_York). Use this to resolve dates like "Saturday" or "30 days".`;
+  const sup = t.suppliers?.length
+    ? `\n\nThis business orders materials from: ${t.suppliers.map((x) => `${x.name} (about ${x.leadDays} days)`).join(", ")}. ` +
+      `If the job uses ordered materials and the owner hasn't said where from, ask which supplier with ask_owner (the supplier names as options, plus "No special order"). ` +
+      `Put the exact name in "supplier". The install date is planned from the supplier's wait, so don't invent one.`
+    : "";
+  return `${prompt}${sup}\n\nToday is ${weekdayNY()}, ${todayNY()} (America/New_York). Use this to resolve dates like "Saturday" or "30 days".`;
 }
 
 /** Remove markdown the model may still produce, so the chat reads as plain text. */

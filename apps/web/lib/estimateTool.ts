@@ -33,6 +33,7 @@ export const SUBMIT_ESTIMATE_TOOL = {
       taxable: { type: "boolean" },
       delivery: { type: "string", enum: ["email", "sms", "both"] },
       note: { type: "string", maxLength: 200 },
+      supplier: { type: "string", description: "Only for stores with a supplier list: the supplier the materials come from, spelled exactly as listed" },
     },
   },
 };

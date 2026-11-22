@@ -42,10 +42,10 @@ Plan:
 
 ## Deposit paid → tentative install (Leal Glass, Nov 22)
 Flow: Measure → Estimate → Accepted → Deposit paid → glass ordered → tentative install booked → glass in → install confirmed → installed → balance.
-- [ ] **Paid detection:** worker reads Clover's Invoices list and marks deposit/balance Paid (also covers "paid status").
-- [ ] **Tentative install on deposit paid:** book a Clover appointment at deposit date + the store's material lead time (e.g. 3 weeks), on the crew's calendar (Team 1 / Team 2 as Clover employees), marked "Tentative, pending glass". Clover's confirmation email is the customer's notice. Per-store lead time setting; per supplier/item later.
-- [ ] **Glass in → confirm:** office taps Glass in (keep the date) or Delayed (pick a new date); the bot updates the Clover appointment so Clover sends the updated confirmation.
-- [ ] **Per-store deposit message** on the deposit invoice (Leal: "we're ordering your glass, your install is penciled in and we'll confirm when it arrives"; painter: "this locks in your start date").
+- [x] **Paid detection (built Nov 22):** worker reads Clover's Invoices list and marks deposit/balance Paid (also covers "paid status").
+- [x] **Tentative install on deposit paid (built Nov 22; Clover booking needs a bookable service + crew employees in the demo, then a first real test):** book a Clover appointment at deposit date + the store's material lead time (e.g. 3 weeks), on the crew's calendar (Team 1 / Team 2 as Clover employees), marked "Tentative, pending glass". Clover's confirmation email is the customer's notice. Per-store lead time setting; per supplier/item later.
+- [x] **Glass in → confirm (built: Materials in / Delayed / Change date; moving an existing Clover appointment is still manual until the edit screen is mapped):** office taps Glass in (keep the date) or Delayed (pick a new date); the bot updates the Clover appointment so Clover sends the updated confirmation.
+- [x] **Per-store deposit message** on the deposit invoice (Leal: "we're ordering your glass, your install is penciled in and we'll confirm when it arrives"; painter: "this locks in your start date").
 - [ ] **Look-only check of Leal's Clover first:** appointment screens, whether appointment notes/title show in the customer's confirmation email, how to pick an employee/crew, whether the calendar shows open slots, and any customer messaging Clover can send.
 - [ ] Jobs board (desktop + phone): one column per step, one next-action button per job; app notifications (free) + email backup, no SMS.
 

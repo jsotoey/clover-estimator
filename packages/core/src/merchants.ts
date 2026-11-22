@@ -34,6 +34,8 @@ ALTER TABLE merchants ADD COLUMN IF NOT EXISTS deposit_note text;          -- sh
 ALTER TABLE merchants ADD COLUMN IF NOT EXISTS lead_days integer NOT NULL DEFAULT 0 CHECK (lead_days BETWEEN 0 AND 120);
 ALTER TABLE merchants ADD COLUMN IF NOT EXISTS buffer_days integer NOT NULL DEFAULT 2 CHECK (buffer_days BETWEEN 0 AND 30);
 ALTER TABLE merchants ADD COLUMN IF NOT EXISTS book_installs boolean NOT NULL DEFAULT false;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS install_service text NOT NULL DEFAULT 'Installation'; -- bookable service in Clover
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS install_time text NOT NULL DEFAULT '9:00 AM';
 
 CREATE TABLE IF NOT EXISTS suppliers (
   id          serial PRIMARY KEY,
@@ -62,13 +64,17 @@ CREATE TABLE IF NOT EXISTS installs (
   install_date  date NOT NULL,
   earliest_date date NOT NULL,                     -- guardrail: deposit date + supplier lead time + buffer
   status        text NOT NULL DEFAULT 'to_book'
-                CHECK (status IN ('to_book','booking','tentative','to_confirm','confirmed','failed','done','cancelled')),
+                CHECK (status IN ('to_book','booking','tentative','to_confirm','confirmed','to_reschedule','failed','done','cancelled')),
   materials     text NOT NULL DEFAULT 'ordered' CHECK (materials IN ('none','ordered','arrived','delayed')),
   error         text,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS installs_status_idx ON installs (status, updated_at);
+ALTER TABLE installs DROP CONSTRAINT IF EXISTS installs_status_check;
+ALTER TABLE installs ADD CONSTRAINT installs_status_check
+  CHECK (status IN ('to_book','booking','tentative','to_confirm','confirmed','to_reschedule','failed','done','cancelled'));
+ALTER TABLE installs ADD COLUMN IF NOT EXISTS booked_date date;   -- the date actually in Clover's calendar
 `;
 
 /** Rows created before multi-store support belong to the first store. */

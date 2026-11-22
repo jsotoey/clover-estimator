@@ -2,6 +2,7 @@ import { config } from "./config";
 import { newPage, saveSession, useStore } from "./browser";
 import { checkSession, assertRightStore } from "./clover/session";
 import { loadStores, signedIn, storeById } from "./stores";
+import { processInstall } from "./installPlan";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { runScoutTask } from "./scout";
@@ -178,6 +179,7 @@ async function main() {
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
       if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
+      if (await processInstall(allowedToSend).catch((e) => { console.error("install error", e); return false; })) continue;
       if (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; })) continue;
       if (await runScoutTask().catch((e) => { console.error("scout error", e); return false; })) continue;
       // While idle, visit each signed-in store's Clover every 10 minutes so an idle sign-out doesn't happen.

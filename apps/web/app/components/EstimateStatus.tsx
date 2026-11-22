@@ -68,18 +68,61 @@ function invoiceStep(inv: InvoiceInfo, accepted: boolean, name: string | undefin
   }
 }
 
-function installStep(i: InstallInfo) {
+function InstallStep({ id, i }: { id: string; i: InstallInfo }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [moving, setMoving] = useState(false);
   const when = `${fmtDay(i.date)}${i.crew ? ` · ${i.crew}` : ""}`;
-  const mat = i.materials === "ordered" ? "Waiting on materials" : i.materials === "delayed" ? "Materials delayed" : i.materials === "arrived" ? "Materials in" : "";
+  const mat = i.materials === "ordered" ? "waiting on materials" : i.materials === "delayed" ? "materials delayed" : i.materials === "arrived" ? "materials in" : "";
+  const testRun = (i.error ?? "").startsWith("Test run");
+  async function act(action: "arrived" | "delayed" | "retry", date?: string) {
+    setBusy(true); setMsg("");
+    const r = await fetch(`/api/estimates/${id}/install`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false); setMoving(false);
+    setMsg(r.ok ? (action === "arrived" ? "Install confirmed." : action === "delayed" ? "New date saved." : "Trying again…") : j.error ?? "That didn't work.");
+  }
+  const actions = (
+    <div className="mt-1.5 flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {i.materials !== "arrived" && i.materials !== "none" && (
+          <button disabled={busy} onClick={() => act("arrived")} className="h-10 rounded-[10px] bg-brand px-3 text-[13px] font-semibold text-white disabled:opacity-50">Materials in</button>
+        )}
+        <button disabled={busy} onClick={() => setMoving((v) => !v)} className="h-10 rounded-[10px] border border-edge bg-white px-3 text-[13px] font-semibold">
+          {i.materials === "arrived" || i.materials === "none" ? "Change date" : "Delayed"}
+        </button>
+      </div>
+      {moving && (
+        <label className="flex items-center gap-2 text-[13px] font-semibold">New date
+          <input type="date" min={new Date().toISOString().slice(0, 10)} className="h-10 rounded-[10px] border border-edge px-2"
+            onChange={(e) => e.target.value && act("delayed", e.target.value)} />
+        </label>
+      )}
+      {msg && <p className="text-[13px] text-muted">{msg}</p>}
+    </div>
+  );
   switch (i.status) {
-    case "confirmed": return <Step state="done" title={`Install confirmed · ${when}`} sub={mat || undefined} />;
+    case "confirmed": return <Step state="done" title={`Install confirmed · ${when}`} sub={mat ? `Materials ${mat.replace("materials ", "")}` : undefined}>{actions}</Step>;
     case "done": return <Step state="done" title={`Installed · ${when}`} />;
-    case "failed": return <Step state="bad" title={`Install not booked · ${when}`} sub={i.error ?? "Clover didn't take the appointment. Nothing was booked."} />;
     case "cancelled": return null;
+    case "failed":
+      return (
+        <Step state="bad" title={`Install not booked · ${when}`} sub={i.error ?? "Clover didn't take the appointment. Nothing was booked."}>
+          <button disabled={busy} onClick={() => act("retry")} className="mt-1.5 h-10 self-start rounded-[10px] bg-bad px-3 text-[13px] font-semibold text-white disabled:opacity-50">Try again</button>
+          {msg && <p className="text-[13px] text-muted">{msg}</p>}
+        </Step>
+      );
+    case "to_reschedule":
+      return <Step state="now" title={`Install moved to ${when}`} sub="Saved here. Move the appointment in Clover's calendar too (the app can't edit Clover appointments yet).">{actions}</Step>;
     case "tentative": case "to_confirm":
-      return <Step state="now" title={`Install penciled in · ${when}`} sub={`Tentative${mat ? `, ${mat.toLowerCase()}` : ""}. Booked in Clover; the customer got the date.`} />;
+      return (
+        <Step state="now" title={`Install penciled in · ${when}`}
+          sub={testRun ? `Tentative, ${mat || "planned"}. ${i.error}` : `Tentative, ${mat || "planned"}. In Clover's calendar; the customer got the date by email.`}>
+          {actions}
+        </Step>
+      );
     default:
-      return <Step state="now" title={`Install planned · ${when}`} sub={`Earliest date after the materials lead time. Booking it in Clover…`} />;
+      return <Step state="now" title={`Install planned · ${when}`} sub="Earliest date after the materials wait. Booking it in Clover…" />;
   }
 }
 
@@ -180,7 +223,7 @@ export function StatusBody({ id, data }: { id: string; data: StatusData }) {
         {invoices.map((inv) => (
           <div key={inv.kind}>
             {invoiceStep(inv, !!data.acceptedAt, c?.name, c?.phone)}
-            {inv.kind === "deposit" && data.install && installStep(data.install)}
+            {inv.kind === "deposit" && data.install && <InstallStep id={id} i={data.install} />}
           </div>
         ))}
         {invoices.length > 0 && invoices.every((i) => i.status === "paid_in_person" || i.status === "paid") && <Step state="done" title="All paid" />}

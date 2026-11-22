@@ -26,6 +26,7 @@ export const EstimateSchema = z
     delivery: z.enum(["email", "sms", "both"]),
     note: z.string().max(200),
     photo_ids: z.array(z.string()).max(3).optional(),
+    supplier: z.string().max(60).optional(), // who the materials are ordered from (stores that book installs)
   })
   .superRefine((e, ctx) => {
     const needPhone = e.delivery === "sms" || e.delivery === "both";

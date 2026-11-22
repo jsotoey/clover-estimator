@@ -54,7 +54,8 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
   useEffect(() => {
     if (!estimateId || !status) return;
     const watching = status.status === "sent" && status.sentForReal &&
-      (!status.acceptedAt || (status.invoices ?? []).some((i) => ["waiting", "approved", "sending"].includes(i.status)));
+      (!status.acceptedAt || (status.invoices ?? []).some((i) => ["waiting", "approved", "sending", "sent"].includes(i.status)) ||
+        ["to_book", "booking", "to_reschedule"].includes(status.install?.status ?? ""));
     if (!watching && ["sent", "failed"].includes(status.status)) return;
     const t = setInterval(async () => {
       const r = await fetch(`/api/estimates/${estimateId}`, { cache: "no-store" });

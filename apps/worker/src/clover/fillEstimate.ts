@@ -58,7 +58,7 @@ export function toUSDate(iso: string): string {
   return `${m}/${d}/${y}`;
 }
 
-async function firstVisible(cands: Locator[], timeout = T.short): Promise<Locator | null> {
+export async function firstVisible(cands: Locator[], timeout = T.short): Promise<Locator | null> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const c of cands) {
@@ -70,7 +70,7 @@ async function firstVisible(cands: Locator[], timeout = T.short): Promise<Locato
   return null;
 }
 
-async function must(cands: Locator[], what: string, timeout = T.short): Promise<Locator> {
+export async function must(cands: Locator[], what: string, timeout = T.short): Promise<Locator> {
   const l = await firstVisible(cands, timeout);
   if (!l) throw new FillError(`Could not find ${what} on the Clover page`);
   return l;
@@ -162,7 +162,7 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   return { cloverNumber: cloverNumber ?? (await findEstimateNumber(page, estimate.customer.name, computed.totalCents)), cloverTotalCents: cloverTotal, sent: true };
 }
 
-async function selectOrCreateCustomer(page: Page, e: Estimate) {
+export async function selectOrCreateCustomer(page: Page, e: Estimate) {
   const search = await must([
     page.getByPlaceholder(/search by email, phone or name/i),
     page.getByLabel(/select customer/i),

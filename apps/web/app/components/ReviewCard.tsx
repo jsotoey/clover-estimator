@@ -66,6 +66,7 @@ export default function ReviewCard({ estimate, computed, photos, businessName, t
         </div>
       </div>
 
+      {estimate.supplier && <p className="text-[13px] text-muted">Materials from <span className="font-semibold text-ink">{estimate.supplier}</span></p>}
       {estimate.note && <p className="text-[13px] leading-relaxed text-muted">{estimate.note}</p>}
 
       {photos.length > 0 && (

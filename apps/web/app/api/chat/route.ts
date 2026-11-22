@@ -23,7 +23,11 @@ export async function POST(req: Request) {
   const userContent: ContentBlockParam[] = [{ type: "text", text: parts.join("\n\n") }];
 
   try {
-    const turn = await runChatTurn(e.conversation as MessageParam[], userContent, s.merchant);
+    const suppliers = (await db().query<{ name: string; lead_days: number }>(
+      `SELECT s.name, s.lead_days FROM suppliers s JOIN merchants m ON m.id = s.merchant_id
+       WHERE s.merchant_id = $1 AND s.active AND m.book_installs ORDER BY s.name`, [s.merchant.id]
+    ).catch(() => ({ rows: [] as { name: string; lead_days: number }[] }))).rows.map((x) => ({ name: x.name, leadDays: x.lead_days }));
+    const turn = await runChatTurn(e.conversation as MessageParam[], userContent, { ...s.merchant, suppliers });
     // A new estimate replaces the old one. A message that changes nothing (a question, "looks good")
     // keeps the current estimate ready to approve; real changes come back as a new submit_estimate.
     const status = turn.review || (e.status === "ready_for_review" && e.estimate) ? "ready_for_review" : "drafting";
@@ -31,6 +35,8 @@ export async function POST(req: Request) {
       `UPDATE estimates SET conversation = $2, status = $3,
          estimate = CASE WHEN $4::jsonb IS NULL THEN estimate ELSE $4::jsonb END,
          computed = CASE WHEN $5::jsonb IS NULL THEN computed ELSE $5::jsonb END,
+         supplier_id = CASE WHEN $4::jsonb IS NULL THEN supplier_id ELSE
+           (SELECT id FROM suppliers WHERE merchant_id = estimates.merchant_id AND active AND lower(name) = lower($4::jsonb->>'supplier')) END,
          updated_at = now() WHERE id = $1`,
       [estimateId, JSON.stringify(turn.conversation), status,
        turn.review ? JSON.stringify(turn.review.estimate) : null,

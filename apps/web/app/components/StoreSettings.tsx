@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { SectionLabel, btnPrimary } from "./ui";
 
 type Settings = {
-  cloverName: string; depositPercent: number; depositNote: string; leadDays: number; bufferDays: number; bookInstalls: boolean;
+  cloverName: string; depositPercent: number; depositNote: string; leadDays: number; bufferDays: number; bookInstalls: boolean; installService: string; installTime: string;
   suppliers: { name: string; leadDays: number }[]; crews: { name: string; skills: string[] }[];
 };
 const field = "h-11 w-full rounded-xl border border-edge bg-white px-3 text-[15px]";
@@ -66,6 +66,15 @@ export default function StoreSettings({ id, onSaved }: { id: number; onSaved?: (
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">Extra buffer (days)
               <input className={field} inputMode="numeric" value={s.bufferDays} onChange={(e) => set("bufferDays", Number(e.target.value) || 0)} />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-sm font-semibold">Clover service to book
+              <input className={field} value={s.installService} onChange={(e) => set("installService", e.target.value)} placeholder="Installation" />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-semibold">Start time
+              <input className={field} value={s.installTime} onChange={(e) => set("installTime", e.target.value)} placeholder="9:00 AM" />
             </label>
           </div>
 

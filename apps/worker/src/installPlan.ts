@@ -37,3 +37,77 @@ export async function planInstall(estimateId: string, paidAt: Date): Promise<voi
   );
   if (ins.rowCount) await logEvent(estimateId, "install_planned", { date: earliest, crew: crew?.name ?? null });
 }
+
+// ---------------------------------------------------------------------------------------------
+// Booking: put a planned install into the store's Clover calendar as a tentative appointment.
+// ---------------------------------------------------------------------------------------------
+import { config } from "./config";
+import { newPage, useStore } from "./browser";
+import { signedIn, storeById } from "./stores";
+import { checkSession, assertRightStore } from "./clover/session";
+import { requestLogin } from "./liveLogin";
+import { addScreenshot } from "./db";
+import { bookAppointment } from "./clover/appointments";
+import { FillError } from "./clover/fillEstimate";
+
+export async function processInstall(allowedToSend: (estimate: unknown) => boolean): Promise<boolean> {
+  const { rows } = await db().query<{
+    id: string; estimate_id: string; merchant_id: number; install_date: string; estimate: unknown; num: string | null;
+    crew: string | null; supplier: string | null; service: string; time: string;
+  }>(
+    `UPDATE installs i SET status = 'booking', updated_at = now()
+     FROM estimates e, merchants m
+     WHERE e.id = i.estimate_id AND m.id = i.merchant_id
+       AND i.id = (SELECT id FROM installs WHERE status = 'to_book' ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1)
+     RETURNING i.id, i.estimate_id, i.merchant_id, i.install_date::text AS install_date, e.estimate, e.clover_estimate_number AS num,
+       (SELECT name FROM crews WHERE id = i.crew_id) AS crew,
+       (SELECT name FROM suppliers WHERE id = e.supplier_id) AS supplier,
+       m.install_service AS service, m.install_time AS time`
+  );
+  const job = rows[0];
+  if (!job) return false;
+  const store = await storeById(job.merchant_id);
+  if (!store) {
+    await db().query(`UPDATE installs SET status = 'failed', error = 'Store not found', updated_at = now() WHERE id = $1`, [job.id]);
+    return true;
+  }
+  await useStore(store);
+  const page = await newPage();
+  // Clover emails the customer when an appointment is booked, so the test lock applies here too.
+  const locked = !config.dryRun && !allowedToSend(job.estimate);
+  try {
+    if (!(await checkSession(page))) {
+      await db().query(`UPDATE installs SET status = 'to_book', updated_at = now() WHERE id = $1`, [job.id]);
+      signedIn.set(store.id, false);
+      await requestLogin("install", store.id);
+      return true;
+    }
+    await assertRightStore(page);
+    const note = [
+      "TENTATIVE install",
+      job.supplier ? `pending materials from ${job.supplier}` : "pending materials",
+      job.num ? `Estimate #${job.num}` : null,
+      "We'll confirm once everything arrives.",
+    ].filter(Boolean).join(". ").replace(/\.\./g, ".");
+    const res = await bookAppointment(page, job.estimate, {
+      date: job.install_date, time: job.time, service: job.service, employee: job.crew, note,
+    }, {
+      dryRun: config.dryRun || locked,
+      onStep: async (step, url) => { await addScreenshot(job.estimate_id, url); await logEvent(job.estimate_id, "install_step", { step }); },
+    });
+    await db().query(
+      `UPDATE installs SET status = $2, booked_date = CASE WHEN $3 THEN install_date ELSE booked_date END, error = $4, updated_at = now() WHERE id = $1`,
+      [job.id, res.booked ? "tentative" : "to_confirm", res.booked,
+       res.booked ? null : locked ? "Test run only (test lock is on): not booked in Clover" : "Test run only: not booked in Clover"]
+    );
+    await logEvent(job.estimate_id, res.booked ? "install_booked" : "install_test_run", { date: job.install_date, crew: job.crew });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await logEvent(job.estimate_id, "install_failed", { error: msg });
+    await db().query(`UPDATE installs SET status = 'failed', error = $2, updated_at = now() WHERE id = $1`,
+      [job.id, e instanceof FillError ? msg : "Something went wrong booking the install in Clover. Nothing was booked. Try again."]);
+  } finally {
+    await page.close().catch(() => {});
+  }
+  return true;
+}
