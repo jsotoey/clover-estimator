@@ -16,15 +16,16 @@ export interface EstimateRow {
   estimate: unknown;
   computed: unknown;
   photo_urls: string[];
+  merchant_id: number;
 }
 
 /** Claim one approved estimate atomically. */
 export async function claimNext(): Promise<EstimateRow | null> {
   const { rows } = await db().query<EstimateRow>(
     `UPDATE estimates SET status = 'sending', updated_at = now()
-     WHERE id = (SELECT id FROM estimates WHERE status = 'approved'
+     WHERE id = (SELECT id FROM estimates WHERE status = 'approved' AND merchant_id IS NOT NULL
                  ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1)
-     RETURNING id, status, estimate, computed, photo_urls`
+     RETURNING id, status, estimate, computed, photo_urls, merchant_id`
   );
   return rows[0] ?? null;
 }

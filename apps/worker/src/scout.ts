@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import { db, logEvent } from "./db";
-import { newPage } from "./browser";
+import { newPage, useStore } from "./browser";
+import { loadStores, storeById } from "./stores";
 import { config } from "./config";
 
 /**
@@ -13,13 +14,16 @@ type Step = { goto?: string } | { click: string; role?: "button" | "link" | "row
 const BLOCKED = /\b(send|save|submit|pay|charge|delete|remove|refund|void|confirm|accept|decline|cancel)\b/i;
 
 export async function runScoutTask(): Promise<boolean> {
-  const { rows } = await db().query<{ id: number; payload: { steps?: Step[] } }>(
+  const { rows } = await db().query<{ id: number; payload: { steps?: Step[] }; merchant_id: number | null }>(
     `UPDATE worker_tasks SET status = 'running' WHERE id = (
        SELECT id FROM worker_tasks WHERE status = 'queued' AND kind = 'scout' ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
-     ) RETURNING id, payload`
+     ) RETURNING id, payload, merchant_id`
   );
   const task = rows[0];
   if (!task) return false;
+  // Look-only tasks run in the store they were queued for (the first store if none was given).
+  const store = (await storeById(task.merchant_id)) ?? (await loadStores())[0];
+  if (store) await useStore(store);
   const page = await newPage();
   const log: string[] = [];
   try {

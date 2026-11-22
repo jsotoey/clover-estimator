@@ -4,11 +4,11 @@ import type { ReactNode } from "react";
 /** Shared look for every screen (from the approved Nov 21 mockups). */
 
 export const btnPrimary =
-  "flex h-[52px] w-full items-center justify-center rounded-[14px] bg-brand px-4 text-base font-semibold text-white disabled:opacity-50";
+  "flex h-[52px] w-full shrink-0 items-center justify-center rounded-[14px] bg-brand px-4 text-base font-semibold text-white disabled:opacity-50";
 export const btnSecondary =
-  "flex h-[52px] w-full items-center justify-center rounded-[14px] border border-edge bg-white px-4 text-base font-semibold text-ink disabled:opacity-50";
+  "flex h-[52px] w-full shrink-0 items-center justify-center rounded-[14px] border border-edge bg-white px-4 text-base font-semibold text-ink disabled:opacity-50";
 export const btnDanger =
-  "flex h-[52px] w-full items-center justify-center rounded-[14px] bg-bad px-4 text-base font-semibold text-white disabled:opacity-50";
+  "flex h-[52px] w-full shrink-0 items-center justify-center rounded-[14px] bg-bad px-4 text-base font-semibold text-white disabled:opacity-50";
 export const card = "rounded-[18px] border border-line bg-white";
 
 export function SectionLabel({ children }: { children: ReactNode }) {
@@ -27,7 +27,7 @@ export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 export function TopBar({ title, business, onBack, backHref, right }: {
-  title: string; business: string; onBack?: () => void; backHref?: string; right?: ReactNode;
+  title: string; business: string | ReactNode; onBack?: () => void; backHref?: string; right?: ReactNode;
 }) {
   const backIcon = (
     <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
@@ -39,7 +39,7 @@ export function TopBar({ title, business, onBack, backHref, right }: {
     <header className="sticky top-0 z-30 flex items-center gap-1.5 border-b border-line bg-paper px-5 pb-3 pt-4">
       {back}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-xs font-semibold text-muted">{business || "Your business"}</span>
+        {typeof business === "string" ? <span className="truncate text-xs font-semibold text-muted">{business || "Your business"}</span> : business}
         <h1 className="truncate font-display text-2xl font-bold">{title}</h1>
       </div>
       {right}

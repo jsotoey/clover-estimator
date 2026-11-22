@@ -4,6 +4,8 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import { profileDir } from "./session";
 import { config } from "./config";
 import { saveArtifact } from "./artifacts";
+import { activeStore, activeStoreOrNull, setActiveStore, type Store } from "./stores";
+import { ensureProfileForLogin } from "./session";
 
 /** The live view and the click mapping both use this size. */
 export const VIEWPORT = { width: 1280, height: 800 };
@@ -14,7 +16,7 @@ let shared: Promise<BrowserContext> | null = null;
  * Clover keeps the sign-in in session cookies, which Chrome drops when it restarts (every deploy).
  * We save all cookies to the volume after a good sign-in or session check, and put them back on launch.
  */
-const cookieFile = () => path.join(config.dataDir, "clover-cookies.json");
+const cookieFile = () => path.join(activeStore().dataDir, "clover-cookies.json");
 
 /** Forget the saved copy (e.g. before using a fresh sign-in done in normal Chrome, so old cookies don't overwrite it). */
 export function forgetSavedSession() {
@@ -87,7 +89,25 @@ export function getContext(): Promise<BrowserContext> {
 
 /** The installed Google Chrome gets its own profile folder (it can't open one made by a newer test Chromium). */
 export function workerProfileDir(): string {
-  return profileDir(config.dataDir) + (config.chromeChannel ? "-chrome" : "");
+  return profileDir(activeStore().dataDir) + (config.chromeChannel ? "-chrome" : "");
+}
+
+/**
+ * Switch the browser to another store: save the current store's sign-in, close its Chrome,
+ * and from then on use the other store's own profile and saved sign-in.
+ */
+export async function useStore(s: Store): Promise<void> {
+  const cur = activeStoreOrNull();
+  if (cur?.id === s.id) return;
+  if (cur && shared) {
+    await saveSession().catch(() => {});
+    await closeContext();
+  }
+  fs.mkdirSync(s.dataDir, { recursive: true });
+  // A different Clover login for this store than last time: drop its old saved sign-in.
+  if (s.email && ensureProfileForLogin(s.dataDir, s.email)) console.log(`[store ${s.slug}] login changed; old sign-in cleared`);
+  setActiveStore(s);
+  console.log(`[store] now working in ${s.name}`);
 }
 
 /** Turn off Chrome's own "Save address?" / "Save card?" / "Save password?" offers in the worker's profile. */

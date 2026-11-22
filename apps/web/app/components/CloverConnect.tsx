@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import StoreSwitcher from "./StoreSwitcher";
 import { TopBar, BottomNav, FixroMark, SectionLabel, card, btnPrimary, btnSecondary } from "./ui";
 
 type Login = { id: number; status: string; reason: string | null; message: string | null; typing?: boolean; created_at: string; finished_at: string | null };
@@ -9,7 +10,7 @@ const fmt = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** Sign in to Clover through a live view of the worker's browser. */
-export default function CloverConnect({ businessName }: { businessName: string }) {
+export default function CloverConnect({ businessName, admin }: { businessName: string; admin: boolean }) {
   const [current, setCurrent] = useState<Login | null>(null);
   const [history, setHistory] = useState<Hist[]>([]);
   const [waiting, setWaiting] = useState(0);
@@ -127,7 +128,7 @@ export default function CloverConnect({ businessName }: { businessName: string }
 
   return (
     <main className="mx-auto flex h-dvh max-w-md flex-col bg-paper">
-      <TopBar title="Clover" business={businessName} />
+      <TopBar title="Clover" business={<StoreSwitcher name={businessName} admin={admin} />} />
       <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-4">
 
       {!live && connected && (
@@ -216,8 +217,10 @@ export default function CloverConnect({ businessName }: { businessName: string }
         ))}
       </section>
 
-      <div className="mt-auto flex items-center justify-center gap-2 pb-1 pt-4 text-xs text-muted">
-        <span>Powered by</span><FixroMark variant="light" size="sm" />
+      <div className="mt-auto flex flex-col items-center gap-3 pb-1 pt-4">
+        <button onClick={async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/"; }}
+          className="text-sm font-semibold text-muted underline">Sign out of this phone</button>
+        <div className="flex items-center gap-2 text-xs text-muted"><span>Powered by</span><FixroMark variant="light" size="sm" /></div>
       </div>
       </div>
       <BottomNav active="clover" />

@@ -5,27 +5,27 @@ import { spawn } from "node:child_process";
 import { closeContext, clearProfileLock, quietChromePrompts, forgetSavedSession, writeSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
-/** Ask the merchant to sign in (once; reuses an open request). Returns the request id. */
-export async function requestLogin(reason: string): Promise<number> {
+/** Ask the store's owner to sign in (once; reuses an open request for that store). Returns the request id. */
+export async function requestLogin(reason: string, merchantId: number): Promise<number> {
   const open = await db().query<{ id: number }>(
-    `SELECT id FROM clover_login WHERE status IN ('requested','active') ORDER BY id DESC LIMIT 1`
+    `SELECT id FROM clover_login WHERE status IN ('requested','active') AND merchant_id = $1 ORDER BY id DESC LIMIT 1`, [merchantId]
   );
   if (open.rows[0]) return open.rows[0].id;
   const { rows } = await db().query<{ id: number }>(
-    `INSERT INTO clover_login (status, reason) VALUES ('requested', $1) RETURNING id`, [reason]
+    `INSERT INTO clover_login (status, reason, merchant_id) VALUES ('requested', $1, $2) RETURNING id`, [reason, merchantId]
   );
-  await logEvent(null, "login_needed", { loginId: rows[0].id, reason });
+  await logEvent(null, "login_needed", { loginId: rows[0].id, reason, merchantId });
   return rows[0].id;
 }
 
-/** Claim a pending sign-in request, if the merchant opened the Connect Clover screen. */
-export async function claimLoginRequest(): Promise<number | null> {
-  const { rows } = await db().query<{ id: number }>(
+/** Claim a pending sign-in request (any store), if someone opened the Clover screen. */
+export async function claimLoginRequest(): Promise<{ id: number; merchantId: number } | null> {
+  const { rows } = await db().query<{ id: number; merchant_id: number }>(
     `UPDATE clover_login SET status = 'active', updated_at = now(), message = 'Opening Clover…'
-     WHERE id = (SELECT id FROM clover_login WHERE status = 'requested' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
-     RETURNING id`
+     WHERE id = (SELECT id FROM clover_login WHERE status = 'requested' AND merchant_id IS NOT NULL ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+     RETURNING id, merchant_id`
   );
-  return rows[0]?.id ?? null;
+  return rows[0] ? { id: rows[0].id, merchantId: rows[0].merchant_id } : null;
 }
 
 /**

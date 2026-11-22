@@ -7,13 +7,14 @@ import EstimateList, { type RecentItem } from "./EstimateList";
 import { StatusBody, StatusSummary, StatusActions, nextInvoice, type StatusData } from "./EstimateStatus";
 import { TopBar, BottomNav, ConnectionPill, btnPrimary, btnSecondary } from "./ui";
 import { toCloverJpeg } from "@/lib/photos";
+import StoreSwitcher from "./StoreSwitcher";
 import { useDictation } from "@/lib/useDictation";
 
 type Msg = { role: "user" | "assistant"; text: string; photos?: string[] };
 type Ask = { question: string; options: string[]; datePicker: boolean };
 const GREETING = "Tell me about the job: the customer's name and email, the work, the price, and when you start. Talk or type, all in one go. I'll put the estimate together.";
 
-export default function EstimateApp({ businessName, taxRate }: { businessName: string; taxRate: number }) {
+export default function EstimateApp({ businessName, taxRate, admin }: { businessName: string; taxRate: number; admin: boolean }) {
   const [view, setView] = useState<"chat" | "list">("chat");
   const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [estimateId, setEstimateId] = useState<string | null>(null);
@@ -189,7 +190,7 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
   if (view === "list")
     return (
       <Shell>
-        <TopBar title="Estimates" business={businessName} />
+        <TopBar title="Estimates" business={<StoreSwitcher name={businessName} admin={admin} />} />
         <div className="flex-1 overflow-y-auto"><EstimateList items={recent} onOpen={openEstimate} /></div>
         <BottomNav active="list" onNew={startOver} onList={showList} />
       </Shell>
@@ -206,7 +207,7 @@ export default function EstimateApp({ businessName, taxRate }: { businessName: s
 
   return (
     <Shell>
-      <TopBar title={title} business={businessName}
+      <TopBar title={title} business={<StoreSwitcher name={businessName} admin={admin} />}
         onBack={hasStatus || review ? () => (hasStatus ? showList() : startOver()) : undefined}
         right={!hasStatus && !review ? <ConnectionPill state={clover} /> : undefined} />
 

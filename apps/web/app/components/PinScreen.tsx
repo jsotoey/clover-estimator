@@ -17,7 +17,7 @@ export default function PinScreen({ businessName }: { businessName?: string }) {
     <main className="mx-auto flex min-h-dvh max-w-md flex-col">
       <section className="flex flex-col gap-6 bg-[#111111] px-6 pb-10 pt-16">
         <FixroMark />
-        {businessName && <p className="text-[15px] text-[#C9C9C4]">Estimates for <span className="font-semibold text-white">{businessName}</span></p>}
+        <p className="text-[15px] text-[#C9C9C4]">{businessName ? <>Estimates for <span className="font-semibold text-white">{businessName}</span></> : "Enter your PIN to open your store."}</p>
       </section>
       <form onSubmit={submit} className="flex flex-1 flex-col gap-3 p-6">
         <label htmlFor="pin" className="text-sm font-semibold text-muted">Your PIN</label>

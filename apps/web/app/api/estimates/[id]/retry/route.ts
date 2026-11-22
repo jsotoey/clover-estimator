@@ -1,9 +1,11 @@
 import { db } from "@/lib/db";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized, ownsEstimate } from "@/lib/session";
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthed())) return unauthorized();
+  const s = await getSession();
+  if (!s) return unauthorized();
   const { id } = await ctx.params;
+  if (!(await ownsEstimate(s, id))) return Response.json({ error: "Not found" }, { status: 404 });
   const { rowCount } = await db().query(
     `UPDATE estimates SET status = 'approved', error = NULL, updated_at = now() WHERE id = $1 AND status = 'failed'`,
     [id]

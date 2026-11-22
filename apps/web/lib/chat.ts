@@ -3,7 +3,10 @@ import type { MessageParam, ContentBlockParam, ToolResultBlockParam } from "@ant
 import { env } from "./env";
 import { SYSTEM_PROMPT } from "./systemPrompt.generated";
 import { ASK_OWNER_TOOL, SUBMIT_ESTIMATE_TOOL, handleSubmitEstimate, parseAskOwner, type AskOwner } from "./estimateTool";
-import type { Estimate, PricingResult } from "@ce/core";
+import type { Estimate, PricingResult, PaymentProgram } from "@ce/core";
+
+/** The store's own terms (from its row in merchants). Defaults come from env for tests and old setups. */
+export interface StoreTerms { depositPercent: number; validDays: number; taxable: boolean; taxRate: number; paymentProgram: PaymentProgram }
 
 function todayNY(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -12,8 +15,7 @@ function weekdayNY(): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" }).format(new Date());
 }
 
-export function buildSystemPrompt(): string {
-  const t = env.terms();
+export function buildSystemPrompt(t: Pick<StoreTerms, "depositPercent" | "validDays" | "taxable"> = env.terms()): string {
   const prompt = SYSTEM_PROMPT
     .replaceAll("{{DEPOSIT}}", String(t.depositPercent))
     .replaceAll("{{VALID_DAYS}}", String(t.validDays))
@@ -58,9 +60,9 @@ export function withOpenToolResults(conversation: MessageParam[], userContent: C
  * submit_estimate: validated and priced in code (bad input goes back to Claude, max 3 tries).
  * ask_owner: ends the turn; the app shows the question with tappable choices.
  */
-export async function runChatTurn(conversation: MessageParam[], userContent: ContentBlockParam[]): Promise<ChatTurnResult> {
+export async function runChatTurn(conversation: MessageParam[], userContent: ContentBlockParam[], store: StoreTerms): Promise<ChatTurnResult> {
   const client = new Anthropic({ apiKey: env.anthropicKey() });
-  const system = buildSystemPrompt();
+  const system = buildSystemPrompt(store);
   const convo: MessageParam[] = [...conversation, { role: "user", content: withOpenToolResults(conversation, userContent) }];
   let review: ChatTurnResult["review"] = null;
 
@@ -91,7 +93,7 @@ export async function runChatTurn(conversation: MessageParam[], userContent: Con
         results.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: "Unknown tool" });
         continue;
       }
-      const outcome = handleSubmitEstimate(t.input, { taxRate: env.taxRate(), paymentProgram: env.paymentProgram() });
+      const outcome = handleSubmitEstimate(t.input, { taxRate: store.taxRate, paymentProgram: store.paymentProgram });
       if (!outcome.ok) {
         results.push({ type: "tool_result", tool_use_id: t.id, is_error: true, content: outcome.error });
         continue;

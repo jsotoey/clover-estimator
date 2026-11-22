@@ -1,7 +1,7 @@
 import { config } from "./config";
-import { ensureProfileForLogin } from "./session";
-import { newPage, saveSession } from "./browser";
-import { checkSession } from "./clover/session";
+import { newPage, saveSession, useStore } from "./browser";
+import { checkSession, assertRightStore } from "./clover/session";
+import { loadStores, signedIn, storeById } from "./stores";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
 import { runScoutTask } from "./scout";
@@ -12,16 +12,13 @@ import { claimLoginRequest, requestLogin, runLiveLogin } from "./liveLogin";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** After a successful sign-in, send every estimate that was waiting for it. */
-async function releaseWaitingEstimates() {
+/** After a successful sign-in, send every estimate of that store that was waiting for it. */
+async function releaseWaitingEstimates(merchantId: number) {
   const { rowCount } = await db().query(
-    `UPDATE estimates SET status = 'approved', error = NULL, updated_at = now() WHERE status = 'needs_login'`
+    `UPDATE estimates SET status = 'approved', error = NULL, updated_at = now() WHERE status = 'needs_login' AND merchant_id = $1`, [merchantId]
   );
-  if (rowCount) await logEvent(null, "resumed_after_login", { count: rowCount });
+  if (rowCount) await logEvent(null, "resumed_after_login", { count: rowCount, merchantId });
 }
-
-/** Handle a pending "Connect Clover" request, if any. Returns true if one ran. */
-let signedIn = true; // until a check says otherwise
 
 /**
  * On a Mac started with scripts/mac-autorun.sh: when a newer version is published, exit between jobs
@@ -44,13 +41,20 @@ async function newerVersionPublished(): Promise<boolean> {
   }
 }
 
+/** Handle a pending "Sign in to Clover" request for any store. Returns true if one ran. */
 async function handleLoginRequest(): Promise<boolean> {
-  const loginId = await claimLoginRequest();
-  if (!loginId) return false;
-  const ok = await runLiveLogin(loginId);
+  const req = await claimLoginRequest();
+  if (!req) return false;
+  const store = await storeById(req.merchantId);
+  if (!store) {
+    await db().query(`UPDATE clover_login SET status = 'failed', message = 'Store not found', finished_at = now() WHERE id = $1`, [req.id]);
+    return true;
+  }
+  await useStore(store);
+  const ok = await runLiveLogin(req.id);
   if (ok) {
-    signedIn = true;
-    await releaseWaitingEstimates();
+    signedIn.set(store.id, true);
+    await releaseWaitingEstimates(store.id);
   }
   return true;
 }
@@ -80,20 +84,29 @@ async function processEstimate() {
   if (!job) return false;
   const id = job.id;
   await logEvent(id, "claimed");
+  const store = await storeById(job.merchant_id);
+  if (!store) {
+    await setStatus(id, "failed", { error: "This estimate's store wasn't found. Nothing was sent." });
+    return true;
+  }
+  await useStore(store);
   const page = await newPage();
   try {
     if (!(await checkSession(page))) {
-      // Saved Clover session expired: park the estimate and ask the merchant to sign in.
+      // Saved Clover session expired: park the estimate and ask the store to sign in.
+      signedIn.set(store.id, false);
       await setStatus(id, "needs_login", { error: "Clover needs you to sign in" });
-      await requestLogin("estimate");
+      await requestLogin("estimate", store.id);
       await logEvent(id, "session_expired");
       return true;
     }
+    signedIn.set(store.id, true);
     await saveSession();
+    await assertRightStore(page);
     const locked = !config.dryRun && !allowedToSend(job.estimate);
     const res = await fillEstimate(page, job.estimate, job.computed, {
       dryRun: config.dryRun || locked,
-      taxRate: config.taxRate,
+      taxRate: store.taxRate,
       photoUrls: job.photo_urls,
       onStep: async (step, url) => {
         await addScreenshot(id, url);
@@ -123,15 +136,13 @@ async function main() {
     console.log("WORKER_PAUSED=true: another computer is running the worker. Idling.");
     for (;;) await sleep(60 * 60 * 1000);
   }
-  // Missing login: wait quietly instead of crash-looping (Railway emails on every crash).
-  if (!process.env.CLOVER_EMAIL || !process.env.CLOVER_PASSWORD) {
-    console.log("Waiting for CLOVER_EMAIL and CLOVER_PASSWORD. Add them in Railway > Variables; the service redeploys on its own.");
-    for (;;) await sleep(60 * 60 * 1000);
+  // Stores and their sign-ins come from the database now; Clover passwords are only needed for the
+  // older picture-on-the-phone sign-in. Wait for the web app to create the first store if needed.
+  while (!(await loadStores(true)).length) {
+    console.log("No stores yet. Open the web app once (it creates the first store), then the worker starts.");
+    await sleep(30_000);
   }
-  if (ensureProfileForLogin(config.dataDir, config.cloverEmail())) {
-    await logEvent(null, "login_changed", { note: "CLOVER_EMAIL changed; saved Clover session cleared" });
-  }
-  console.log(`worker starting: dryRun=${config.dryRun} recon=${config.recon} headless=${config.headless}${config.sendOnlyTo.length ? ` testLock=${config.sendOnlyTo.join(",")}` : ""}`);
+  console.log(`worker starting: stores=${(await loadStores()).map((x) => x.name).join(" | ")} dryRun=${config.dryRun} recon=${config.recon} headless=${config.headless}${config.sendOnlyTo.length ? ` testLock=${config.sendOnlyTo.join(",")}` : ""}`);
   // A sign-in that was open when the worker restarted can't continue; let the merchant start a fresh one.
   await db().query(
     `UPDATE clover_login SET status = 'failed', message = 'Interrupted by an app update. Tap Sign in to Clover again.', frame = NULL, finished_at = now(), updated_at = now() WHERE status = 'active'`
@@ -139,6 +150,7 @@ async function main() {
 
   if (config.recon) {
     // Scouting run: needs a signed-in session first (sign in from the app's Connect Clover screen).
+    await useStore((await loadStores())[0]);
     for (;;) {
       const page = await newPage();
       const ok = await checkSession(page);
@@ -149,13 +161,13 @@ async function main() {
         for (;;) await sleep(60 * 60 * 1000);
       }
       await page.close();
-      await requestLogin("recon");
+      await requestLogin("recon", (await loadStores())[0].id);
       console.log("RECON waiting for you to sign in: open the app > Connect Clover.");
       while (!(await handleLoginRequest().catch(() => false))) await sleep(2000);
     }
   }
 
-  let lastKeepAlive = Date.now();
+  const lastKeepAlive = new Map<number, number>();
   for (;;) {
     try {
       if (await newerVersionPublished()) {
@@ -165,22 +177,26 @@ async function main() {
       }
       if (await handleLoginRequest()) continue;
       if (await processEstimate()) continue;
-      if (signedIn && (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; }))) continue;
-      if (signedIn && (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; }))) continue;
-      if (signedIn && (await runScoutTask().catch((e) => { console.error("scout error", e); return false; }))) continue;
-      // While idle, visit Clover every 10 minutes so an idle sign-out doesn't happen, and save the session.
-      // Only while signed in: when signed out, don't keep loading Clover's login page (it only adds suspicion).
-      if (signedIn && Date.now() - lastKeepAlive > 10 * 60 * 1000) {
-        lastKeepAlive = Date.now();
+      if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
+      if (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; })) continue;
+      if (await runScoutTask().catch((e) => { console.error("scout error", e); return false; })) continue;
+      // While idle, visit each signed-in store's Clover every 10 minutes so an idle sign-out doesn't happen.
+      // Not for signed-out stores: loading Clover's login page over and over only adds suspicion.
+      for (const store of await loadStores()) {
+        if (signedIn.get(store.id) === false) continue;
+        if (Date.now() - (lastKeepAlive.get(store.id) ?? 0) < 10 * 60 * 1000) continue;
+        lastKeepAlive.set(store.id, Date.now());
+        await useStore(store);
         const page = await newPage();
         try {
           const ok = await checkSession(page);
-          signedIn = ok;
+          signedIn.set(store.id, ok);
           if (ok) await saveSession();
-          await logEvent(null, "keepalive", { signedIn: ok });
+          await logEvent(null, "keepalive", { store: store.slug, signedIn: ok });
         } finally {
           await page.close().catch(() => {});
         }
+        break; // one store per pass, so new work is never kept waiting
       }
     } catch (e) {
       console.error("loop error", e);

@@ -1,21 +1,22 @@
 import { db, getEstimate } from "@/lib/db";
-import { env } from "@/lib/env";
 import { splitInvoices, type Estimate, type PricingResult } from "@ce/core";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized, ownsEstimate } from "@/lib/session";
 
 /** Status for the review card / banner. Conversation is not returned. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthed())) return unauthorized();
+  const s = await getSession();
+  if (!s) return unauthorized();
   const { id } = await ctx.params;
+  if (!(await ownsEstimate(s, id))) return Response.json({ error: "Not found" }, { status: 404 });
   const e = await getEstimate(id);
   if (!e) return Response.json({ error: "Not found" }, { status: 404 });
   // While a Clover sign-in is open, the worker is busy with it; say so instead of "putting it into Clover".
-  const login = await db().query(`SELECT 1 FROM clover_login WHERE status IN ('requested','active') LIMIT 1`);
+  const login = await db().query(`SELECT 1 FROM clover_login WHERE status IN ('requested','active') AND merchant_id = $1 LIMIT 1`, [s.merchant.id]);
   // A really-sent estimate gets its deposit/balance invoices (amounts from the shared pricing code).
   const sentForReal = e.status === "sent" && !(e.error ?? "").startsWith("dry run");
   if (sentForReal && e.estimate && e.computed) {
     const est = e.estimate as Estimate;
-    const split = splitInvoices((e.computed as PricingResult).subtotalCents, env.taxRate(), est.taxable, est.deposit_percent);
+    const split = splitInvoices((e.computed as PricingResult).subtotalCents, s.merchant.taxRate, est.taxable, est.deposit_percent);
     for (const [kind, p] of [["deposit", split.deposit], ["balance", split.balance]] as const) {
       if (!p) continue;
       await db().query(

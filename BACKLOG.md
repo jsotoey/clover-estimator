@@ -51,7 +51,7 @@ Plan:
 - [x] **Static top menu.** Header stays the same on every screen (Estimates title; Recent, Clover, + New), the Recent list opens under it instead of replacing it. (Nov 20)
 
 ## Platform
-- [ ] **Multi-merchant:** one assistant employee login per merchant on the Mac mini, merchant tag on estimates, per-merchant PIN and standard terms, sign-in due dates on the Clover page.
+- [x] **Multi-merchant (Nov 22):** stores table, per-store PIN + terms + tax, admin PIN with store switcher and Stores screen, one worker runs every store with its own saved Clover sign-in, store-name guard before filling. Still to do: sign-in due dates per store, per-store test lock.
 - [ ] **Auto-delete our copy** of an estimate's details once it's in Clover and the job is closed (Clover is the record).
 - [ ] **Mac mini** (always on) to replace the laptop as the worker; Chrome Remote Desktop for sign-ins from the road.
 - [ ] **Least-privilege role** for the assistant employee (try Manager instead of Admin).

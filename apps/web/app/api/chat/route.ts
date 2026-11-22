@@ -1,18 +1,19 @@
 import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { db, getEstimate } from "@/lib/db";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized, ownsEstimate } from "@/lib/session";
 import { runChatTurn } from "@/lib/chat";
 
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  if (!(await isAuthed())) return unauthorized();
+  const s = await getSession();
+  if (!s) return unauthorized();
   const { estimateId, message, photoCount } = (await req.json().catch(() => ({}))) as {
     estimateId?: string; message?: string; photoCount?: number;
   };
   if (!estimateId || (!message?.trim() && !photoCount)) return Response.json({ error: "Say something first" }, { status: 400 });
   const e = await getEstimate(estimateId);
-  if (!e) return Response.json({ error: "Estimate not found" }, { status: 404 });
+  if (!e || !(await ownsEstimate(s, estimateId))) return Response.json({ error: "Estimate not found" }, { status: 404 });
   if (!["drafting", "ready_for_review"].includes(e.status))
     return Response.json({ error: "This estimate was already approved. Start a new one to make changes." }, { status: 409 });
 
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   const userContent: ContentBlockParam[] = [{ type: "text", text: parts.join("\n\n") }];
 
   try {
-    const turn = await runChatTurn(e.conversation as MessageParam[], userContent);
+    const turn = await runChatTurn(e.conversation as MessageParam[], userContent, s.merchant);
     // A new estimate replaces the old one. A message that changes nothing (a question, "looks good")
     // keeps the current estimate ready to approve; real changes come back as a new submit_estimate.
     const status = turn.review || (e.status === "ready_for_review" && e.estimate) ? "ready_for_review" : "drafting";

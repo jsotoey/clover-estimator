@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized, ownsEstimate } from "@/lib/session";
 
 /**
  * Merchant actions on an estimate's invoices:
@@ -7,8 +7,10 @@ import { isAuthed, unauthorized } from "@/lib/auth";
  *   in_person -> collected on the merchant's Clover device instead; nothing is sent
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthed())) return unauthorized();
+  const s = await getSession();
+  if (!s) return unauthorized();
   const { id } = await ctx.params;
+  if (!(await ownsEstimate(s, id))) return Response.json({ error: "Not found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { kind?: string; action?: string };
   if (!["deposit", "balance"].includes(b.kind ?? "")) return Response.json({ error: "Bad kind" }, { status: 400 });
   const est = await db().query(`SELECT 1 FROM estimates WHERE id = $1 AND status = 'sent' AND coalesce(error,'') NOT LIKE 'dry run%'`, [id]);

@@ -1,9 +1,12 @@
 import { cookies } from "next/headers";
-import { AUTH_COOKIE, authToken, pinMatches } from "@/lib/auth";
+import { SESSION_COOKIE, cookieOptions, sessionCookieValue, signInWithPin } from "@/lib/session";
 
 export async function POST(req: Request) {
   const { pin } = (await req.json().catch(() => ({}))) as { pin?: string };
-  if (!pin || !pinMatches(String(pin))) return Response.json({ error: "Wrong PIN" }, { status: 401 });
-  (await cookies()).set(AUTH_COOKIE, authToken(), { httpOnly: true, secure: process.env.NODE_ENV === "production" && !process.env.LOCAL_HTTP, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 90 });
+  const s = pin ? await signInWithPin(String(pin)) : null;
+  if (!s) return Response.json({ error: "Wrong PIN" }, { status: 401 });
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, sessionCookieValue(s.role, s.merchant.id), cookieOptions);
+  jar.delete("ce_auth");
   return Response.json({ ok: true });
 }

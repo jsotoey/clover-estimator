@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized } from "@/lib/session";
 
 export async function POST() {
-  if (!(await isAuthed())) return unauthorized();
-  await db().query(`UPDATE clover_login SET status = 'cancelled', frame = NULL, finished_at = now(), updated_at = now() WHERE status IN ('requested','active')`);
+  const s = await getSession();
+  if (!s) return unauthorized();
+  await db().query(`UPDATE clover_login SET status = 'cancelled', frame = NULL, finished_at = now(), updated_at = now() WHERE status IN ('requested','active') AND merchant_id = $1`, [s.merchant.id]);
   return Response.json({ ok: true });
 }

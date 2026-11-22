@@ -1,14 +1,16 @@
 import { db } from "@/lib/db";
-import { isAuthed, unauthorized } from "@/lib/auth";
+import { getSession, unauthorized, ownsEstimate } from "@/lib/session";
 import { CLOVER_LIMITS } from "@ce/core";
 
 /** Photos arrive already converted to JPEG and compressed by the browser; stored in Postgres. */
 export async function POST(req: Request) {
-  if (!(await isAuthed())) return unauthorized();
+  const s = await getSession();
+  if (!s) return unauthorized();
   const form = await req.formData();
   const id = String(form.get("estimateId") ?? "");
   const file = form.get("file");
   if (!id || !(file instanceof File)) return Response.json({ error: "Missing file" }, { status: 400 });
+  if (!(await ownsEstimate(s, id))) return Response.json({ error: "Estimate not found" }, { status: 404 });
   if (!["image/jpeg", "image/png", "application/pdf"].includes(file.type))
     return Response.json({ error: "Clover only takes JPG, PNG or PDF" }, { status: 400 });
 

@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { config } from "../config";
+import { activeStore } from "../stores";
 import { capture } from "../browser";
 
 /**
@@ -71,7 +72,7 @@ export async function ensureLoggedIn(page: Page, hooks: LoginHooks): Promise<Log
     page.getByLabel(/email|username/i),
     page.getByPlaceholder(/email/i),
     page.locator('input[type="email"], input[name*="email" i], input[name="username"]'),
-  ], config.cloverEmail());
+  ], activeStore().email ?? "");
   if (!emailOk) return { ok: false, reason: "Could not find the email field on the Clover login page" };
 
   // Some flows ask for email first, then password on the next screen.
@@ -80,7 +81,7 @@ export async function ensureLoggedIn(page: Page, hooks: LoginHooks): Promise<Log
     await page.waitForTimeout(1500);
   }
 
-  const pwOk = await fillFirst(page, [page.getByLabel(/password/i), page.locator('input[type="password"]')], config.cloverPassword());
+  const pwOk = await fillFirst(page, [page.getByLabel(/password/i), page.locator('input[type="password"]')], activeStore().password ?? "");
   if (!pwOk) return { ok: false, reason: "Could not find the password field on the Clover login page" };
 
   await clickFirst(page, [
