@@ -9,6 +9,18 @@ import { pickOption } from "./appointments";
  * (so nobody types a password). Only these two actions exist; each checks first and never duplicates.
  */
 
+/** The items list search box has no label, only "Search items" placeholder text; it filters the table. */
+async function searchItems(page: Page, text: string) {
+  const box = await firstVisible([
+    page.getByPlaceholder(/search items/i), page.getByRole("combobox", { name: /search items/i }), page.locator('input[type="search"]'),
+  ], 8000);
+  if (!box) throw new FillError("Couldn't find the search box on Clover's items list.");
+  await box.click();
+  await box.fill(text);
+  await box.press("Enter").catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
 async function merchantPath(page: Page): Promise<string> {
   // Clover's links carry the merchant id: /employees/m/<id>/employees
   await page.goto(`${config.cloverBaseUrl}/dashboard`, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -55,8 +67,7 @@ export async function createService(page: Page, name: string, minutes: number): 
   const mid = await merchantPath(page);
   await page.goto(`${config.cloverBaseUrl}/inventory/m/${mid}/items`, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForLoadState("networkidle").catch(() => {});
-  const search = await firstVisible([page.getByRole("combobox", { name: /search items/i }), page.getByPlaceholder(/search/i)], 8000);
-  if (search) { await search.fill(name); await page.waitForTimeout(1500); }
+  await searchItems(page, name);
   if (await page.getByRole("button", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).first().isVisible().catch(() => false))
     return "exists";
 
@@ -124,8 +135,7 @@ export async function assignServiceEmployees(page: Page, service: string, employ
   const mid = await merchantPath(page);
   await page.goto(`${config.cloverBaseUrl}/inventory/m/${mid}/items`, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForLoadState("networkidle").catch(() => {});
-  const search = await firstVisible([page.getByRole("combobox", { name: /search items/i })], 8000);
-  if (search) { await search.fill(service); await page.waitForTimeout(1500); }
+  await searchItems(page, service);
   const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   await (await must([page.getByRole("button", { name: new RegExp(`^${esc(service)}$`, "i") })], `the "${service}" service`, 8000)).click();
   await page.waitForLoadState("networkidle").catch(() => {});
