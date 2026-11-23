@@ -39,7 +39,9 @@ export async function pickOption(page: Page, name: string): Promise<boolean> {
 }
 
 async function chooseService(page: Page, service: string) {
+  // Mapped Nov 23 from the live form: the service picker is a search combobox labeled "Item".
   const box = await firstVisible([
+    page.getByRole("combobox", { name: /^\s*item\b/i }),
     page.getByRole("combobox", { name: /service/i }),
     page.getByRole("button", { name: /select (a )?service|choose (a )?service|^services?\*?$/i }),
     page.getByLabel(/service/i),
@@ -47,7 +49,10 @@ async function chooseService(page: Page, service: string) {
   if (!box) throw new FillError(`Couldn't find Clover's service picker on the appointment form. Nothing was booked.`);
   await box.click();
   const tag = await box.evaluate((el) => el.tagName).catch(() => "");
-  if (tag === "INPUT") await box.fill(service).catch(() => {});
+  if (tag === "INPUT") {
+    await box.fill(service).catch(() => {});
+    await page.waitForTimeout(1200); // let the search results show
+  }
   if (!(await pickOption(page, service)))
     throw new FillError(`Clover has no bookable service named "${service}". Add it in Items and services (or change the store's install service in Settings). Nothing was booked.`);
 }

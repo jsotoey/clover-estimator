@@ -78,7 +78,7 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
       service: s.service, employee: s.employee, note: visitNote(req, Number(job.photos)),
     }, {
       dryRun: config.dryRun || locked,
-      onStep: async (step) => { await logEvent(null, "booking_step", { booking: job.id, step }); },
+      onStep: async (step, url) => { await logEvent(null, "booking_step", { booking: job.id, step, screenshot: url }); },
     });
     await db().query(`UPDATE bookings SET status = $2, error = $3, updated_at = now() WHERE id = $1`, [
       job.id, res.booked ? "booked" : "test_run",
