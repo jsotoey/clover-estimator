@@ -134,7 +134,11 @@ export async function bookAppointment(
     throw new FillError(`Clover needs at least one bookable service before it can book appointments. Add "${a.service}" in Items and services. Nothing was booked.`);
   await step("01-form");
 
-  await selectOrCreateCustomer(page, who);
+  await selectOrCreateCustomer(page, who, () => page.getByRole("button", { name: /edit customer/i }).first().isVisible().catch(() => false));
+  if (!(await page.getByRole("button", { name: /edit customer/i }).first().isVisible({ timeout: 3000 }).catch(() => false)))
+    await page.waitForTimeout(1500); // a newly added customer takes a moment to show
+  if (!(await page.getByRole("button", { name: /edit customer/i }).first().isVisible().catch(() => false)))
+    throw new FillError(`Clover didn't let us pick the customer (${who.customer.email}). If Clover has them as "Name Unknown", add their name in Clover's Customers, then tap Try again. Nothing was booked.`);
   await handleTextConsent(page, !!opts.textConsent);
   await chooseService(page, a.service, !!opts.textConsent);
   if (a.employee) await chooseEmployee(page, a.employee);

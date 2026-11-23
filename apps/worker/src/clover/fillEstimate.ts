@@ -163,7 +163,12 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
 }
 
 /** Only the customer (and delivery choice) matter here, so online bookings can use it too. */
-export async function selectOrCreateCustomer(page: Page, e: { customer: Estimate["customer"]; delivery?: Estimate["delivery"] }) {
+export async function selectOrCreateCustomer(
+  page: Page, e: { customer: Estimate["customer"]; delivery?: Estimate["delivery"] },
+  // Appointment form: a picked customer shows a card with "Edit customer". Without that, the pick didn't
+  // take (seen Nov 23 with a nameless "Name Unknown" customer), so try the next match or add them.
+  isSelected?: () => Promise<boolean>,
+) {
   const search = await must([
     page.getByPlaceholder(/search by email, phone or name/i),
     page.getByLabel(/select customer/i),
@@ -183,7 +188,14 @@ export async function selectOrCreateCustomer(page: Page, e: { customer: Estimate
       const nameMatch = text.includes(e.customer.name.toLowerCase());
       if (emailMatch || (nameMatch && !e.customer.email)) {
         await options.nth(i).click();
-        return;
+        if (!isSelected) return;
+        for (let t = 0; t < 10; t++) {
+          if (await isSelected()) return;
+          await page.waitForTimeout(300);
+        }
+        // Didn't stick: clear the search and try the next search term (or add a new customer below).
+        await search.fill("").catch(() => {});
+        break;
       }
     }
   }
