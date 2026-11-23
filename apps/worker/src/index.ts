@@ -171,14 +171,27 @@ async function main() {
   }
 
   const lastKeepAlive = new Map<number, number>();
+  // Loop watchdog: if one job ever freezes the loop (a browser call that never returns), restart the
+  // worker instead of sitting dead. mac-autorun.sh restarts it on exit code 42.
+  let lastTick = Date.now();
+  setInterval(() => {
+    if (Date.now() - lastTick < 10 * 60_000) return;
+    console.error("The worker loop has been stuck for 10 minutes. Restarting...");
+    saveSession().catch(() => {}).finally(() => process.exit(42));
+    setTimeout(() => process.exit(42), 15_000).unref();
+  }, 60_000).unref();
   for (;;) {
+    lastTick = Date.now();
     try {
       if (await newerVersionPublished()) {
         console.log("A newer version is available. Restarting to update...");
         await saveSession().catch(() => {});
         process.exit(42);
       }
-      if (await handleLoginRequest()) continue;
+      lastTick = Date.now() + config.liveLoginTimeoutMs; // a live sign-in may take up to 30 minutes
+      const signedInNow = await handleLoginRequest();
+      lastTick = Date.now();
+      if (signedInNow) continue;
       if (await processEstimate()) continue;
       if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
       await planMissingInstalls().catch((e) => console.error("install sweep error", e));

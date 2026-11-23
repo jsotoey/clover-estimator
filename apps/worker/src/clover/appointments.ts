@@ -124,7 +124,8 @@ export async function bookAppointment(
   page: Page, who: { customer: Estimate["customer"] }, a: AppointmentFill,
   opts: { dryRun: boolean; textConsent?: boolean; onStep?: (step: string, url: string) => Promise<void> }
 ): Promise<{ booked: boolean }> {
-  const step = async (name: string) => opts.onStep?.(name, await capture(page, `appointment-${name}`, { aria: true }));
+  // A failed screenshot never stops the booking; the step is still logged.
+  const step = async (name: string) => opts.onStep?.(name, await capture(page, `appointment-${name}`, { aria: true }).catch(() => ""));
 
   await page.goto(`${config.cloverBaseUrl}/appointments/calendar`, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForLoadState("networkidle").catch(() => {});
@@ -166,7 +167,9 @@ export async function bookAppointment(
   if (!(await enabled(save, 4000))) throw new FillError("Clover's Save stayed greyed out, so a required field is missing. See the screenshot. Nothing was booked.");
   if (opts.dryRun) return { booked: false };
 
-  await save.click();
+  await opts.onStep?.("02b-saving", "");
+  await save.click({ timeout: 15_000 });
+  await opts.onStep?.("02c-save-clicked", "");
   for (let i = 0; i < 15; i++) {
     await page.waitForTimeout(1000);
     if (await handleTextConsent(page, !!opts.textConsent, 200)) {
@@ -175,7 +178,7 @@ export async function bookAppointment(
       continue;
     }
     const stillOpen = await page.getByRole("heading", { name: /create appointment/i }).isVisible().catch(() => false);
-    if (!stillOpen) { await step("03-saved"); return { booked: true }; }
+    if (!stillOpen) { await opts.onStep?.("03-saved", ""); await step("03-saved-calendar"); return { booked: true }; }
     const err = await page.locator('[role="alert"]').filter({ hasText: /\S/ }).first().innerText().catch(() => "");
     if (err) throw new FillError(`Clover didn't save the appointment: ${err.slice(0, 140)}`);
   }

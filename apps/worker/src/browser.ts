@@ -147,12 +147,14 @@ export async function newPage(): Promise<Page> {
 
 /** Screenshot + optional HTML + ARIA snapshot of the current page. Returns the screenshot URL. */
 export async function capture(page: Page, label: string, opts: { html?: boolean; aria?: boolean } = {}): Promise<string> {
-  const shot = await page.screenshot({ fullPage: true, scale: "css" });
+  // Capped: a stuck screenshot must never freeze the worker (Clover's calendar can be huge).
+  const shot = await page.screenshot({ fullPage: true, scale: "css", timeout: 15_000 })
+    .catch(() => page.screenshot({ scale: "css", timeout: 10_000 }));
   const url = await saveArtifact(`${label}.png`, shot, "image/png");
   if (opts.html) await saveArtifact(`${label}.html`, await page.content(), "text/html");
   if (opts.aria) {
     // Hide anything typed in login/password/code boxes, same as the look-only checks.
-    const aria = redactAria(await page.locator("body").ariaSnapshot().catch((e) => `ariaSnapshot failed: ${e}`));
+    const aria = redactAria(await page.locator("body").ariaSnapshot({ timeout: 10_000 }).catch((e) => `ariaSnapshot failed: ${e}`));
     await saveArtifact(`${label}.aria.yaml`, `# ${page.url()}\n${aria}`, "text/yaml");
     console.log(`[aria:${label}] ${page.url()}\n${aria}\n[/aria:${label}]`);
   }

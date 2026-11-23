@@ -79,14 +79,24 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
       return true;
     }
     await assertRightStore(page);
-    const res = await bookAppointment(page, { customer }, {
+    // Watchdog: nothing in here may hold the worker for more than 4 minutes. Closing the page
+    // makes any stuck browser call fail, so the loop always moves on.
+    let lastStep = "start";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        page.close().catch(() => {});
+        reject(new FillError(`The bot got stuck in Clover (last step: ${lastStep}). ${/save/.test(lastStep) ? "It may have saved: check the Clover calendar before tapping Try again." : "Nothing was booked."}`));
+      }, 4 * 60_000);
+    });
+    const res = await Promise.race([watchdog, bookAppointment(page, { customer }, {
       date: zonedDate(start, s.timeZone), time: zonedClock(start, s.timeZone),
       service: s.service, employee: s.employee, note: visitNote(req, Number(job.photos)),
     }, {
       dryRun: config.dryRun || locked,
       textConsent: job.text_consent, // agreed on the booking page
-      onStep: async (step, url) => { await logEvent(null, "booking_step", { booking: job.id, step, screenshot: url }); },
-    });
+      onStep: async (step, url) => { lastStep = step; await logEvent(null, "booking_step", { booking: job.id, step, screenshot: url || null }); },
+    })]).finally(() => clearTimeout(timer));
     await db().query(`UPDATE bookings SET status = $2, error = $3, updated_at = now() WHERE id = $1`, [
       job.id, res.booked ? "booked" : "test_run",
       res.booked ? null : locked ? "Not added: this customer isn't on your test list (SEND_ONLY_TO). The form was filled in but not saved. Tap Try again after allowing them." : "Not added: the worker is in test mode (DRY_RUN). The form was filled in but not saved.",
