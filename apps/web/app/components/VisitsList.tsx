@@ -10,7 +10,7 @@ interface Visit {
 
 const STATUS: Record<string, [Tone, string]> = {
   to_book: ["warn", "Waiting to add to Clover"], booking: ["warn", "Adding to Clover"], booked: ["good", "On Clover calendar"],
-  test_run: ["plain", "Test only"], failed: ["bad", "Not in Clover"], cancelled: ["plain", "Cancelled"],
+  test_run: ["warn", "Not added (test)"], failed: ["bad", "Not in Clover"], cancelled: ["plain", "Cancelled"],
 };
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 

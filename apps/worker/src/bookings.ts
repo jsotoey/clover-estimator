@@ -82,7 +82,7 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
     });
     await db().query(`UPDATE bookings SET status = $2, error = $3, updated_at = now() WHERE id = $1`, [
       job.id, res.booked ? "booked" : "test_run",
-      res.booked ? null : locked ? "Test run only (test lock is on): not put on the Clover calendar" : "Test run only: not put on the Clover calendar",
+      res.booked ? null : locked ? "Not added: this customer isn't on your test list (SEND_ONLY_TO). The form was filled in but not saved. Tap Try again after allowing them." : "Not added: the worker is in test mode (DRY_RUN). The form was filled in but not saved.",
     ]);
     await logEvent(null, res.booked ? "visit_booked" : "visit_test_run", { booking: job.id, store: store.slug });
   } catch (e) {
