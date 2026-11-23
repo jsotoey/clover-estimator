@@ -92,6 +92,9 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
     page.getByRole("button", { name: /create new estimate/i }),
     page.getByRole("link", { name: /create new estimate/i }),
     page.getByRole("button", { name: /(create|new) estimate/i }),
+    // A store with no estimates yet gets Clover's "Introducing Estimates" page instead (seen Nov 23 capture).
+    page.getByRole("button", { name: /^\s*get started\s*$/i }),
+    page.getByRole("link", { name: /^\s*get started\s*$/i }),
   ], 20_000);
   if (!create) {
     // Say what Clover showed instead, with a picture, rather than a bare "couldn't find it".
