@@ -49,6 +49,14 @@ Flow: Measure → Estimate → Accepted → Deposit paid → glass ordered → t
 - [ ] **Look-only check of Leal's Clover first:** appointment screens, whether appointment notes/title show in the customer's confirmation email, how to pick an employee/crew, whether the calendar shows open slots, and any customer messaging Clover can send.
 - [ ] Jobs board (desktop + phone): one column per step, one next-action button per job; app notifications (free) + email backup, no SMS.
 
+## Returning customers on the booking page (V2, Jon, Nov 23)
+Goal: a repeat customer types their phone or email and books in a few taps, without retyping everything.
+- [ ] **"Existing customer?" lookup.** Phone or email box at the top of the booking page. To protect customers' privacy, send a one-time code by text or email first, and only fill in their saved details once they enter it. Without that, anyone could type a number and see someone's name and address.
+- [ ] **Saved info.** After the code: fill in their name, email, phone and last address, and ask "Same address as last time?" with a choice to enter a new one (one customer can have several job sites).
+- [ ] **Where the info comes from.** Our bookings table first (fast, already ours); Clover Customers as the record of truth once we can read it.
+- [ ] **Stricter matching in the bot (do sooner).** Reuse a Clover customer only on an email or phone match, never on a name alone, so a visit can't land on the wrong person with the same name. A few duplicates are better than a mixed-up record.
+- [ ] **Phone on the Clover customer** (with the booking-page consent) so Clover texts the confirmation, not only emails it.
+
 ## Customer contact
 - [ ] **Text delivery for estimates.** Clover only texts customers with text consent on their profile. New customers created by the app get consent ticked when sending by text; existing customers (e.g. Jon Soto) need it ticked in Clover. Consider having the worker tick it when editing an existing customer, with the merchant's say-so.
 - [ ] **Text the invoice link.** Clover invoices are email-only; the app shows "Text the payment link" only when Clover hands back a share link. Confirm whether Clover gives one, otherwise find it in the sent invoice.
