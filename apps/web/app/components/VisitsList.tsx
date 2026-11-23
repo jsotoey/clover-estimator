@@ -8,7 +8,7 @@ interface Visit {
   status: string; error: string | null; photos: string[];
 }
 interface DaySlots { date: string; slots: { start: string; label: string }[] }
-type View = "list" | "day" | "week" | "month";
+type View = "calendar" | "list";
 
 const TZ = "America/New_York";
 const STATUS: Record<string, [Tone, string]> = {
@@ -32,7 +32,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
-  const [view, setView] = useState<View>("week");
+  const [view, setView] = useState<View>("calendar");
   const [focus, setFocus] = useState(() => dayKey(Date.now()));
   const [moving, setMoving] = useState<string | null>(null);
 
@@ -125,21 +125,23 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     );
   };
 
-  const step = (n: number) => setFocus((f) => (view === "month"
-    ? (() => { const d = toD(f); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); })()
-    : addDays(f, view === "week" ? 7 * n : n)));
-  const title = view === "month" ? label(focus, { month: "long", year: "numeric" })
-    : view === "week" ? `${label(weekStart(focus), { month: "short", day: "numeric" })} – ${label(addDays(weekStart(focus), 6), { month: "short", day: "numeric" })}`
-    : label(focus, { weekday: "long", month: "short", day: "numeric" });
+  // Arrows move a month; the selected day keeps its day number where it can.
+  const step = (n: number) => setFocus((f) => {
+    const d = toD(f); const day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n);
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(day, last));
+    return d.toISOString().slice(0, 10);
+  });
+  const title = label(focus, { month: "long", year: "numeric" });
 
   const dayList = (k: string, compact = false) => {
     const list = byDay.get(k) ?? [];
     return (
       <section key={k} className="flex flex-col gap-2">
-        <button onClick={() => { setFocus(k); setView("day"); }} className={`flex items-baseline justify-between text-left ${k === today ? "text-brand" : ""}`}>
+        <div className={`flex items-baseline justify-between ${k === today ? "text-brand" : ""}`}>
           <span className="font-semibold">{label(k, { weekday: "long", month: "short", day: "numeric" })}{k === today ? " · Today" : ""}</span>
-          <span className="text-sm text-muted">{list.length ? `${list.length} visit${list.length > 1 ? "s" : ""}` : "Open"}</span>
-        </button>
+          <span className="text-sm text-muted">{list.length ? `${list.length} visit${list.length > 1 ? "s" : ""}` : ""}</span>
+        </div>
         {list.length > 0 && <ul className="flex flex-col gap-2">{list.map((v) => row(v, true))}</ul>}
         {!compact && !list.length && <p className="text-sm text-muted">Nothing booked.</p>}
       </section>
@@ -161,8 +163,8 @@ export default function VisitsList({ businessName }: { businessName: string }) {
             const n = byDay.get(k)?.length ?? 0;
             const inMonth = k.slice(0, 7) === m;
             return (
-              <button key={k} onClick={() => { setFocus(k); setView("day"); }}
-                className={`flex aspect-square flex-col items-center justify-center rounded-xl text-sm ${inMonth ? "" : "text-muted/50"} ${k === today ? "ring-2 ring-brand" : ""} ${n ? "bg-brand-soft font-semibold text-brand" : ""}`}>
+              <button key={k} onClick={() => { setFocus(k); setOpen(null); }} aria-pressed={k === focus}
+                className={`flex aspect-square flex-col items-center justify-center rounded-xl text-sm ${inMonth ? "" : "text-muted/50"} ${k === today ? "ring-2 ring-brand" : ""} ${k === focus ? "!bg-brand font-semibold !text-white" : n ? "bg-brand-soft font-semibold text-brand" : ""}`}>
                 {Number(k.slice(8))}
                 {n > 0 && <span className="text-[10px] leading-none">{n} visit{n > 1 ? "s" : ""}</span>}
               </button>
@@ -171,6 +173,12 @@ export default function VisitsList({ businessName }: { businessName: string }) {
         </div>
       </div>
     );
+  };
+
+  // Under the selected day: the next few visits after it, so the week ahead is visible without tapping around.
+  const upcomingAfter = (k: string) => {
+    const next = active.filter((v) => dayKey(v.starts_at) > k).sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)).slice(0, 5);
+    return next.length ? <><SectionLabel>Coming up after</SectionLabel><ul className="flex flex-col gap-2">{next.map((v) => row(v))}</ul></> : null;
   };
 
   return (
@@ -188,16 +196,16 @@ export default function VisitsList({ businessName }: { businessName: string }) {
         )}
         {!url && visits && <p className="text-sm text-muted">Online booking is off for this store.</p>}
 
-        <div className="grid grid-cols-4 gap-1 rounded-full bg-line/60 p-1 text-sm font-semibold" role="tablist">
-          {(["list", "day", "week", "month"] as View[]).map((v) => (
+        <div className="grid grid-cols-2 gap-1 rounded-full bg-line/60 p-1 text-sm font-semibold" role="tablist">
+          {(["calendar", "list"] as View[]).map((v) => (
             <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
               className={`rounded-full py-2 capitalize ${view === v ? "bg-white shadow-sm" : "text-muted"}`}>{v}</button>
           ))}
         </div>
-        {view !== "list" && (
+        {view === "calendar" && (
           <div className="flex items-center justify-between">
             <button onClick={() => step(-1)} className="rounded-full px-3 py-2 text-lg" aria-label="Previous">‹</button>
-            <button onClick={() => setFocus(today)} className="font-display text-lg font-bold">{title}</button>
+            <button onClick={() => { setFocus(today); setOpen(null); }} className="font-display text-lg font-bold">{title}</button>
             <button onClick={() => step(1)} className="rounded-full px-3 py-2 text-lg" aria-label="Next">›</button>
           </div>
         )}
@@ -211,9 +219,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
             {past.length > 0 && <><SectionLabel>Past two weeks</SectionLabel><ul className="flex flex-col gap-3">{past.map((v) => row(v))}</ul></>}
           </>
         )}
-        {visits && view === "day" && dayList(focus)}
-        {visits && view === "week" && <div className="flex flex-col gap-4">{Array.from({ length: 7 }, (_, i) => dayList(addDays(weekStart(focus), i), true))}</div>}
-        {visits && view === "month" && <>{month()}<p className="text-sm text-muted">Tap a day to see its visits.</p></>}
+        {visits && view === "calendar" && <>{month()}{dayList(focus)}{upcomingAfter(focus)}</>}
       </main>
       <BottomNav active="visits" />
     </div>

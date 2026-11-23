@@ -285,6 +285,7 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
           )}
           {pendingPhotos > 0 && <p className="text-xs text-muted">{pendingPhotos} photo{pendingPhotos > 1 ? "s" : ""} ready to send</p>}
           {mic.problem && <p className="text-xs text-bad">{mic.problem}</p>}
+          {mic.trail.length > 0 && <pre className="max-h-32 overflow-auto rounded-lg bg-line/40 p-2 text-[10px] leading-tight">{mic.trail.join("\n")}</pre>}
           <div className="flex items-end gap-2.5">
             <button onClick={() => fileRef.current?.click()} disabled={busy || photos.length >= CLOVER_LIMITS.maxAttachments}
               aria-label="Add a photo" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-edge bg-white disabled:opacity-40">
