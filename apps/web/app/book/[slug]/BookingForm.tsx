@@ -5,7 +5,7 @@ import { toCloverJpeg } from "@/lib/photos";
 import { btnPrimary, card } from "@/app/components/ui";
 
 interface Info { name: string; service: string; phone: string | null; minutes: number; projectTypes: string[]; days: DaySlots[] }
-interface Done { date: string; time: string; minutes: number }
+interface Done { date: string; time: string; minutes: number; emailed: boolean }
 interface Photo { file: File; url: string }
 
 const input = "h-12 w-full rounded-xl border border-edge bg-white px-3.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -86,7 +86,7 @@ export default function BookingForm({ slug, name, service }: { slug: string; nam
         if (r.status === 409) { setStart(""); load(); }
         return;
       }
-      setDone({ date: j.date, time: j.time, minutes: j.minutes });
+      setDone({ date: j.date, time: j.time, minutes: j.minutes, emailed: !!j.emailed });
       window.scrollTo({ top: 0 });
     } catch {
       setErr("Couldn't reach us. Check your connection and try again.");
@@ -115,6 +115,7 @@ export default function BookingForm({ slug, name, service }: { slug: string; nam
             <h2 className="mt-3 font-display text-2xl font-bold">You&apos;re booked</h2>
             <p className="mt-2 text-lg font-semibold">{dayFmt(done.date, { weekday: "long", month: "long", day: "numeric" })} at {done.time}</p>
             <p className="mt-1 text-muted">{[f.street, f.unit, f.city].filter(Boolean).join(", ")}</p>
+            {done.emailed && <p className="mt-3 text-sm text-muted">We emailed a confirmation to <b className="text-ink">{f.email}</b>, with a calendar file to add it to your phone.</p>}
             <p className="mt-4 text-sm text-muted">
               We&apos;ll see you then. {info?.phone ? <>Need to change it? Call or text <a className="font-semibold text-brand underline" href={`tel:${info.phone.replace(/\D/g, "")}`}>{info.phone}</a>.</> : `Need to change it? Contact ${name}.`}
             </p>

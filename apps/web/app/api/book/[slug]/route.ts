@@ -1,4 +1,5 @@
-import { checkBookingRequest, isOpen, openSlots, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
+import { checkBookingRequest, customerConfirmation, isOpen, openSlots, shopNotice, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
+import { sendEmail } from "@/lib/mail";
 import { db } from "@/lib/db";
 import { bookingStore, busyTimes } from "@/lib/booking";
 
@@ -80,7 +81,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
         `INSERT INTO files (booking_id, kind, name, content_type, data) VALUES ($1, 'photo', $2, $3, $4)`,
         [id, f.name.replace(/[^\w.-]/g, "_").slice(0, 80) || "photo.jpg", f.type, Buffer.from(await f.arrayBuffer())]);
     await client.query("COMMIT");
-    return Response.json({ ok: true, id, ...confirmation });
+    // Confirmation now (the Clover calendar entry follows from the worker). Failures don't undo the booking.
+    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+    const origin = host ? `https://${host}` : new URL(req.url).origin;
+    const results = await Promise.all([
+      sendEmail(customerConfirmation({ id, storeName: store.name, s: store.settings, b })),
+      ...[shopNotice({ storeName: store.name, s: store.settings, b, photos: photos.length, appUrl: `${origin}/visits` })]
+        .filter((e) => e !== null).map((e) => sendEmail(e!)),
+    ]);
+    await db().query(`INSERT INTO events (type, detail) VALUES ('booking_emails', $1)`,
+      [JSON.stringify({ booking: id, customer: results[0], shop: results[1] ?? null })]).catch(() => {});
+    return Response.json({ ok: true, id, emailed: results[0].sent, ...confirmation });
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     if ((e as { code?: string }).code === "23505")

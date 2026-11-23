@@ -22,6 +22,7 @@ export interface BookingSettings {
   projectTypes: string[];
   timeZone: string;
   phone: string | null;       // shown to customers for changes ("call or text")
+  notifyEmail: string | null; // the shop gets a "new booking" email here; also the customer's reply-to
 }
 
 export const DEFAULT_BOOKING: BookingSettings = {
@@ -37,6 +38,7 @@ export const DEFAULT_BOOKING: BookingSettings = {
   projectTypes: ["Shower door or enclosure", "Mirror", "Window or glass repair", "Table top or shelf", "Something else"],
   timeZone: "America/New_York",
   phone: null,
+  notifyEmail: null,
 };
 
 /** Merge a store's saved JSON over the defaults, clamping numbers to sane ranges. */
@@ -65,6 +67,7 @@ export function bookingSettings(raw: unknown): BookingSettings {
       ? r.projectTypes.slice(0, 12) : DEFAULT_BOOKING.projectTypes,
     timeZone: typeof r.timeZone === "string" && r.timeZone ? r.timeZone : DEFAULT_BOOKING.timeZone,
     phone: typeof r.phone === "string" && /\d{10}/.test(r.phone.replace(/\D/g, "")) ? r.phone.trim() : null,
+    notifyEmail: typeof r.notifyEmail === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.notifyEmail.trim()) ? r.notifyEmail.trim() : null,
   };
 }
 
