@@ -18,6 +18,7 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [finishing, setFinishing] = useState<number | null>(null); // when "I'm signed in" was tapped
   const imgRef = useRef<HTMLImageElement>(null);
 
   const load = useCallback(async () => {
@@ -35,6 +36,19 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
   }, [load]);
 
   const live = current && (current.status === "requested" || current.status === "active");
+  useEffect(() => { if (!live) setFinishing(null); }, [live]);
+  // Tick once a second while checking, for the progress bar.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (finishing === null) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [finishing]);
+  function finishSignin() {
+    if (finishing !== null) return; // already sent; the worker is checking
+    setFinishing(Date.now());
+    enqueue({ kind: "key", text: "SigninDone" });
+  }
 
   // Poll status, and the picture while signing in.
   useEffect(() => {
@@ -169,10 +183,29 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
             <p className="font-display text-xl font-bold">Sign in on the computer</p>
             <p className="text-[13px] text-muted">Clover&apos;s login is open there now.</p>
           </div>
-          {steps}
-          <button onClick={() => enqueue({ kind: "key", text: "SigninDone" })} className={btnPrimary}>I&apos;m signed in</button>
-          <button onClick={async () => { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); }}
-            className="py-1 text-sm font-semibold text-muted underline">Cancel</button>
+          {finishing === null ? (
+            <>
+              {steps}
+              <button onClick={finishSignin} className={btnPrimary}>I&apos;m signed in</button>
+            </>
+          ) : (
+            <div className="flex flex-col gap-3" role="status" aria-live="polite">
+              <div className="flex items-center gap-3">
+                <span aria-hidden="true" className="h-6 w-6 shrink-0 animate-spin rounded-full border-[3px] border-brand-soft border-t-brand" />
+                <p className="text-[15px] font-semibold">
+                  {Date.now() - finishing < 8000 ? "Got it. Saving your Clover sign-in…" : Date.now() - finishing < 20000 ? "Checking that Clover accepts it…" : "Almost done…"}
+                </p>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-brand-soft">
+                <div className="h-full rounded-full bg-brand transition-all duration-1000" style={{ width: `${Math.min(95, ((Date.now() - finishing) / 30000) * 100)}%` }} />
+              </div>
+              <p className="text-[13px] text-muted">This takes about 20 to 30 seconds. You can leave this screen; it finishes on its own.</p>
+            </div>
+          )}
+          {finishing === null && (
+            <button onClick={async () => { await fetch("/api/clover-login/cancel", { method: "POST" }); load(); }}
+              className="py-1 text-sm font-semibold text-muted underline">Cancel</button>
+          )}
         </section>
       )}
 

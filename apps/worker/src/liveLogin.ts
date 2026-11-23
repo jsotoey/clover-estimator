@@ -224,7 +224,7 @@ async function runLocalSignin(id: number, started: number): Promise<boolean> {
       `DELETE FROM clover_login_input WHERE login_id = $1 AND kind = 'key' AND text = 'SigninDone' RETURNING id`, [id]
     );
     if (done.rowCount) break;
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 400)); // short, so "I'm signed in" is picked up right away
   }
   // Copy the sign-in (all cookies, including the temporary ones) before Chrome closes.
   let copied = 0;
@@ -244,9 +244,9 @@ async function runLocalSignin(id: number, started: number): Promise<boolean> {
   }
   if (!exited) {
     chrome.kill("SIGTERM");
-    for (let i = 0; i < 20 && !exited; i++) await new Promise((r) => setTimeout(r, 500));
+    for (let i = 0; i < 40 && !exited; i++) await new Promise((r) => setTimeout(r, 250));
   }
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 300)); // let Chrome release the profile
 
   if (!copied) forgetSavedSession(); // nothing fresh copied: don't let an old copy overwrite the profile
   const page = await newPage(); // restores the copied sign-in on launch
