@@ -23,6 +23,12 @@ export function stateForZip(zip: string): string {
  * employee (e.g. "Estimator"), at the time the customer picked, address and job in the notes.
  */
 export async function processBooking(allowedToSend: (raw: unknown) => boolean): Promise<boolean> {
+  // A visit stuck in "booking" means the worker stopped mid-way (Mac asleep, app closed). Save may or
+  // may not have gone through, so don't retry on our own: flag it so the shop checks Clover first.
+  await db().query(
+    `UPDATE bookings SET status = 'failed', updated_at = now(),
+       error = 'The worker stopped while adding this to Clover. Check the Clover calendar: if it is not there, tap Try again.'
+     WHERE status = 'booking' AND updated_at < now() - interval '10 minutes'`);
   const { rows } = await db().query<{
     id: string; merchant_id: number; starts_at: Date; booking: unknown; first_name: string; last_name: string;
     email: string; phone: string; street: string; unit: string | null; city: string; zip: string;

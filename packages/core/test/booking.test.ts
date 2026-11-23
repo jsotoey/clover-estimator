@@ -69,9 +69,9 @@ describe("booking request", () => {
   it("lists what's missing in plain English", () => {
     expect(checkBookingRequest({ ...good, zip: "7083", phone: "555" })).toEqual(["Add a 10-digit phone number.", "Add a 5-digit ZIP code."]);
   });
-  it("note for Clover keeps the address and stays under 250 characters", () => {
+  it("note for Clover keeps the address and fits Clover's 200 characters", () => {
     const n = visitNote({ ...good, details: "x".repeat(600) }, 2);
     expect(n.startsWith("ADDRESS: 12 Main St, Union, 07083. PHONE: (917) 328-3255. Mirror (2 photos in app): ")).toBe(true);
-    expect(n.length).toBeLessThanOrEqual(250);
+    expect(n.length).toBeLessThanOrEqual(200);
   });
 });

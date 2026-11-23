@@ -187,13 +187,13 @@ export function checkBookingRequest(b: Partial<BookingRequest>): string[] {
 }
 
 /**
- * Note for the Clover appointment (Clover cuts notes off around 250 characters), so the person
+ * Note for the Clover appointment (Clover's notes box takes 200 characters), so the person
  * driving out has the address and the gist even without opening the app.
  */
 export function visitNote(b: BookingRequest, photos: number): string {
   const addr = [b.street + (b.unit ? ` ${b.unit}` : ""), b.city, b.zip].map((x) => x.trim()).filter(Boolean).join(", ");
   const head = `ADDRESS: ${addr}. PHONE: ${b.phone.trim()}. ${b.projectType}${photos ? ` (${photos} photo${photos > 1 ? "s" : ""} in app)` : ""}: `;
-  const room = 250 - head.length;
+  const room = 200 - head.length;
   const det = b.details.trim().replace(/\s+/g, " ");
   return head + (det.length > room ? det.slice(0, Math.max(0, room - 1)) + "…" : det);
 }

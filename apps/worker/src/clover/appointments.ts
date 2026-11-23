@@ -150,7 +150,7 @@ export async function bookAppointment(
   const notesToggle = await firstVisible([page.getByRole("button", { name: /^notes$/i })], 2000);
   if (notesToggle && (await notesToggle.getAttribute("aria-expanded")) !== "true") await notesToggle.click().catch(() => {});
   const notes = await firstVisible([page.getByRole("textbox", { name: /note/i }), page.getByPlaceholder(/note/i), page.locator("textarea")], 3000);
-  if (notes) await notes.fill(a.note.slice(0, 250));
+  if (notes) await notes.fill(a.note.slice(0, 200)); // Clover: "152 of 200 characters"
   await step("02-filled");
 
   const shown = await date.inputValue().catch(() => "");
