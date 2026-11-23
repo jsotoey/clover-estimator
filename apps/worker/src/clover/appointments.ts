@@ -62,10 +62,26 @@ async function chooseService(page: Page, service: string) {
     for (let i = 0; i < (await any.count()); i++) {
       if (await any.nth(i).isVisible().catch(() => false)) { await any.nth(i).click(); return; }
     }
+    // Clover's dropdown may be plain divs: click the innermost visible text that starts with the name
+    // (not the search box itself, not the form's own labels).
+    const texts = page.getByText(wanted);
+    for (let i = (await texts.count()) - 1; i >= 0; i--) {
+      const t = texts.nth(i);
+      if (!(await t.isVisible().catch(() => false))) continue;
+      const inForm = await t.evaluate((el) => !!el.closest("input, textarea, label, [role='combobox']")).catch(() => true);
+      if (inForm) continue;
+      await t.click();
+      await page.waitForTimeout(800);
+      const chosen = await box.inputValue().catch(() => "");
+      if (!chosen || wanted.test(chosen) || !(await t.isVisible().catch(() => false))) return;
+    }
   }
+  const shot = await capture(page, "appointment-service-list", { aria: true }).catch(() => "");
   const offered = (await page.locator('[role="option"], [role="listbox"] li, [role="menuitem"]').allInnerTexts().catch(() => []))
     .map((t) => t.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 8);
-  throw new FillError(`Clover's service list didn't show "${service}"${offered.length ? ` (it showed: ${offered.join("; ")})` : " (the list was empty)"}. Check the service is turned on for appointments in Items and services. Nothing was booked.`);
+  const err = new FillError(`Clover's service list didn't show "${service}"${offered.length ? ` (it showed: ${offered.join("; ")})` : " (the list was empty)"}. Check the service is turned on for appointments in Items and services. Nothing was booked.`);
+  (err as FillError & { screenshot?: string }).screenshot = shot;
+  throw err;
 }
 
 async function chooseEmployee(page: Page, employee: string) {

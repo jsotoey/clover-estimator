@@ -87,7 +87,7 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
     await logEvent(null, res.booked ? "visit_booked" : "visit_test_run", { booking: job.id, store: store.slug });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logEvent(null, "visit_failed", { booking: job.id, error: msg });
+    await logEvent(null, "visit_failed", { booking: job.id, error: msg, screenshot: (e as { screenshot?: string }).screenshot ?? null });
     await fail(e instanceof FillError ? msg : "Something went wrong putting the visit on the Clover calendar. Nothing was booked there yet.");
   } finally {
     await page.close().catch(() => {});
