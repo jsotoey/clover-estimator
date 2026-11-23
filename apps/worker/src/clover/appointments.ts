@@ -38,6 +38,19 @@ export async function pickOption(page: Page, name: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Picking a customer with a phone opens Clover's "Confirm consent" box (automated texts to that phone),
+ * which blocks the rest of the form. The bot never gives consent on a customer's behalf: it closes the
+ * box, so Clover won't text them (email still works). Turning on texts needs the customer's own consent.
+ */
+async function dismissTextConsent(page: Page) {
+  const dialog = page.getByRole("dialog", { name: /confirm consent/i });
+  if (!(await dialog.isVisible({ timeout: 2500 }).catch(() => false))) return;
+  await dialog.getByRole("button", { name: /^close$/i }).click().catch(() => {});
+  await dialog.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
+  if (await dialog.isVisible().catch(() => false)) await page.keyboard.press("Escape").catch(() => {});
+}
+
 async function chooseService(page: Page, service: string) {
   // Mapped Nov 23 from the live form: the service picker is a search combobox labeled "Item".
   const box = await firstVisible([
@@ -114,6 +127,7 @@ export async function bookAppointment(
   await step("01-form");
 
   await selectOrCreateCustomer(page, who);
+  await dismissTextConsent(page);
   await chooseService(page, a.service);
   if (a.employee) await chooseEmployee(page, a.employee);
 
