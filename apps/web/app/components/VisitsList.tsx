@@ -183,17 +183,9 @@ export default function VisitsList({ businessName }: { businessName: string }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar title="Visits" business={businessName} />
+      <TopBar title="Visits" business={businessName}
+        right={url ? <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-brand-soft px-3 py-2 text-sm font-semibold text-brand">Booking page ↗</a> : undefined} />
       <main className="flex flex-1 flex-col gap-4 p-4 pb-6">
-        {url && (
-          <div className={`${card} flex items-center justify-between gap-3 p-4`}>
-            <div className="min-w-0">
-              <p className="font-semibold">Your booking page</p>
-              <p className="truncate text-sm text-muted">{typeof window !== "undefined" ? window.location.origin : ""}{url}</p>
-            </div>
-            <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-brand-soft px-3 py-2 text-sm font-semibold text-brand">Open</a>
-          </div>
-        )}
         {!url && visits && <p className="text-sm text-muted">Online booking is off for this store.</p>}
 
         <div className="grid grid-cols-2 gap-1 rounded-full bg-line/60 p-1 text-sm font-semibold" role="tablist">
