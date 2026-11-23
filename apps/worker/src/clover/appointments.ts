@@ -193,8 +193,11 @@ export async function bookAppointment(
     }
     const stillOpen = await page.getByRole("heading", { name: /create appointment/i }).isVisible().catch(() => false);
     if (!stillOpen) { await opts.onStep?.("03-saved", ""); await step("03-saved-calendar"); return { booked: true }; }
-    const err = await page.locator('[role="alert"]').filter({ hasText: /\S/ }).first().innerText().catch(() => "");
-    if (err) throw new FillError(`Clover didn't save the appointment: ${err.slice(0, 140)}`);
+    // innerText waits up to 30s for an element that may not exist, so only read alerts that are there.
+    const alerts = page.locator('[role="alert"], [aria-invalid="true"] ~ *, .error, [class*="error" i]').filter({ hasText: /\S/ });
+    const err = (await alerts.count().catch(() => 0)) ? await alerts.first().innerText({ timeout: 1000 }).catch(() => "") : "";
+    if (err) throw new FillError(`Clover didn't save the appointment: ${err.replace(/\s+/g, " ").slice(0, 140)}`);
+    if (i === 2) await step("02e-still-open-after-save"); // shows what Clover is waiting on
   }
   await step("03-unclear");
   throw new FillError("Clicked Save on the appointment, but Clover didn't confirm it. Check the Clover calendar before trying again.");
