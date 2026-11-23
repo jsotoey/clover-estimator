@@ -159,6 +159,8 @@ export async function bookAppointment(
     await time.click();
     await time.fill(a.time).catch(() => {});
     if (!(await pickOption(page, a.time))) await time.press("Enter").catch(() => {});
+    // Close the time list so it can't swallow the Save click.
+    await time.press("Escape").catch(() => {});
   }
 
   const notesToggle = await firstVisible([page.getByRole("button", { name: /^notes$/i })], 2000);
@@ -197,7 +199,16 @@ export async function bookAppointment(
     const alerts = page.locator('[role="alert"], [aria-invalid="true"] ~ *, .error, [class*="error" i]').filter({ hasText: /\S/ });
     const err = (await alerts.count().catch(() => 0)) ? await alerts.first().innerText({ timeout: 1000 }).catch(() => "") : "";
     if (err) throw new FillError(`Clover didn't save the appointment: ${err.replace(/\s+/g, " ").slice(0, 140)}`);
-    if (i === 2) await step("02e-still-open-after-save"); // shows what Clover is waiting on
+    if (i === 2) {
+      // Still on the form with no error: an open dropdown can eat the first click, so press Save once more,
+      // and record what Clover marks as missing.
+      const missing = (await page.locator('[aria-invalid="true"]').evaluateAll((els) =>
+        els.map((e) => e.getAttribute("aria-label") || (e as HTMLInputElement).name || e.id).filter(Boolean)).catch(() => [])) as string[];
+      const emp = (await page.getByRole("button", { name: /^employee/i }).first().innerText({ timeout: 1000 }).catch(() => "")).replace(/\s+/g, " ");
+      await opts.onStep?.(`02e-still-open (missing: ${missing.join(", ") || "none shown"}; employee: ${emp || "?"})`, "");
+      await capture(page, "appointment-02e-still-open", { aria: true, html: true }).catch(() => "");
+      await save.click({ timeout: 5000 }).catch(() => {});
+    }
   }
   await step("03-unclear");
   throw new FillError("Clicked Save on the appointment, but Clover didn't confirm it. Check the Clover calendar before trying again.");
