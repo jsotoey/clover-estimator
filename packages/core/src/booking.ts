@@ -23,6 +23,8 @@ export interface BookingSettings {
   timeZone: string;
   phone: string | null;       // shown to customers for changes ("call or text")
   notifyEmail: string | null; // the shop gets a "new booking" email here; also the customer's reply-to
+  accent: string | null;      // the shop's brand color for the booking page, e.g. "#12648f"
+  tagline: string | null;     // one line under the shop name, e.g. "Where Precision Meets Transparency"
 }
 
 export const DEFAULT_BOOKING: BookingSettings = {
@@ -39,6 +41,8 @@ export const DEFAULT_BOOKING: BookingSettings = {
   timeZone: "America/New_York",
   phone: null,
   notifyEmail: null,
+  accent: null,
+  tagline: null,
 };
 
 /** Merge a store's saved JSON over the defaults, clamping numbers to sane ranges. */
@@ -68,6 +72,8 @@ export function bookingSettings(raw: unknown): BookingSettings {
     timeZone: typeof r.timeZone === "string" && r.timeZone ? r.timeZone : DEFAULT_BOOKING.timeZone,
     phone: typeof r.phone === "string" && /\d{10}/.test(r.phone.replace(/\D/g, "")) ? r.phone.trim() : null,
     notifyEmail: typeof r.notifyEmail === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.notifyEmail.trim()) ? r.notifyEmail.trim() : null,
+    accent: typeof r.accent === "string" && /^#[0-9a-f]{6}$/i.test(r.accent) ? r.accent : null,
+    tagline: typeof r.tagline === "string" && r.tagline.trim() ? r.tagline.trim().slice(0, 80) : null,
   };
 }
 

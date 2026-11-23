@@ -20,5 +20,5 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
         <p className="mt-2 text-muted">Please call the business to set up a visit.</p>
       </main>
     );
-  return <BookingForm slug={store.slug} name={store.name} service={store.settings.service} />;
+  return <BookingForm slug={store.slug} name={store.name} service={store.settings.service} accent={store.settings.accent ?? "#1F6B45"} tagline={store.settings.tagline} />;
 }
