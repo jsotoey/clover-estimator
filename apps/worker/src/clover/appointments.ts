@@ -49,12 +49,23 @@ async function chooseService(page: Page, service: string) {
   if (!box) throw new FillError(`Couldn't find Clover's service picker on the appointment form. Nothing was booked.`);
   await box.click();
   const tag = await box.evaluate((el) => el.tagName).catch(() => "");
-  if (tag === "INPUT") {
-    await box.fill(service).catch(() => {});
-    await page.waitForTimeout(1200); // let the search results show
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wanted = new RegExp(`^\\s*${esc(service)}`, "i");
+  // Search with the start of the name (symbols like "&" can trip up Clover's search), then pick the exact one.
+  for (const q of [service.split(/[&,(/]/)[0].trim(), service, ""]) {
+    if (tag === "INPUT") {
+      await box.fill(q).catch(() => {});
+      await page.waitForTimeout(1500);
+    }
+    if (await pickOption(page, service)) return;
+    const any = page.locator('[role="option"], [role="listbox"] li, [role="menuitem"], [role="listbox"] [role="button"]').filter({ hasText: wanted });
+    for (let i = 0; i < (await any.count()); i++) {
+      if (await any.nth(i).isVisible().catch(() => false)) { await any.nth(i).click(); return; }
+    }
   }
-  if (!(await pickOption(page, service)))
-    throw new FillError(`Clover has no bookable service named "${service}". Add it in Items and services (or change the store's install service in Settings). Nothing was booked.`);
+  const offered = (await page.locator('[role="option"], [role="listbox"] li, [role="menuitem"]').allInnerTexts().catch(() => []))
+    .map((t) => t.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 8);
+  throw new FillError(`Clover's service list didn't show "${service}"${offered.length ? ` (it showed: ${offered.join("; ")})` : " (the list was empty)"}. Check the service is turned on for appointments in Items and services. Nothing was booked.`);
 }
 
 async function chooseEmployee(page: Page, employee: string) {
