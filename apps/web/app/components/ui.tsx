@@ -63,7 +63,7 @@ export function BottomNav({ active, onNew, onList }: { active: "new" | "list" | 
     { key: "clover" as const, label: "Clover", href: "/clover", on: undefined },
   ];
   return (
-    <nav aria-label="Main" className="grid grid-cols-4 border-t border-line bg-white pb-[max(14px,env(safe-area-inset-bottom))] pt-1.5">
+    <nav aria-label="Main" className="sticky bottom-0 z-20 grid grid-cols-4 border-t border-line bg-white pb-[max(14px,env(safe-area-inset-bottom))] pt-1.5">
       {items.map((it) => {
         const isOn = it.key === active;
         const cls = `flex flex-col items-center gap-[3px] py-1.5 text-xs ${isOn ? "font-semibold text-brand" : "font-medium text-muted"}`;

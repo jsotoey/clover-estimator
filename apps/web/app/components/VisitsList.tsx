@@ -184,7 +184,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <TopBar title="Visits" business={businessName} />
-      <main className="flex flex-1 flex-col gap-4 p-4 pb-28">
+      <main className="flex flex-1 flex-col gap-4 p-4 pb-6">
         {url && (
           <div className={`${card} flex items-center justify-between gap-3 p-4`}>
             <div className="min-w-0">
