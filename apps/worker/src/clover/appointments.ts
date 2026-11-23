@@ -43,9 +43,10 @@ export async function pickOption(page: Page, name: string): Promise<boolean> {
  * which blocks the rest of the form. The bot never gives consent on a customer's behalf: it closes the
  * box, so Clover won't text them (email still works). Turning on texts needs the customer's own consent.
  */
-async function dismissTextConsent(page: Page) {
+async function dismissTextConsent(page: Page, waitMs = 3000) {
   const dialog = page.getByRole("dialog", { name: /confirm consent/i });
-  if (!(await dialog.isVisible({ timeout: 2500 }).catch(() => false))) return;
+  // It can show up a moment after the customer is picked, so wait for it (isVisible doesn't wait).
+  if (!(await dialog.waitFor({ state: "visible", timeout: waitMs }).then(() => true).catch(() => false))) return;
   await dialog.getByRole("button", { name: /^close$/i }).click().catch(() => {});
   await dialog.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
   if (await dialog.isVisible().catch(() => false)) await page.keyboard.press("Escape").catch(() => {});
@@ -60,15 +61,19 @@ async function chooseService(page: Page, service: string) {
     page.getByLabel(/service/i),
   ], 6000);
   if (!box) throw new FillError(`Couldn't find Clover's service picker on the appointment form. Nothing was booked.`);
+  await dismissTextConsent(page, 500);
   await box.click();
   const tag = await box.evaluate((el) => el.tagName).catch(() => "");
   const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const wanted = new RegExp(`^\\s*${esc(service)}`, "i");
   // Search with the start of the name (symbols like "&" can trip up Clover's search), then pick the exact one.
   for (const q of [service.split(/[&,(/]/)[0].trim(), service, ""]) {
+    await dismissTextConsent(page, 300);
     if (tag === "INPUT") {
       await box.fill(q).catch(() => {});
       await page.waitForTimeout(1500);
+      // Clover's list ("1 option is available") opens on arrow-down if typing didn't open it.
+      if (!(await page.getByRole("option").first().isVisible().catch(() => false))) await box.press("ArrowDown").catch(() => {});
     }
     if (await pickOption(page, service)) return;
     const any = page.locator('[role="option"], [role="listbox"] li, [role="menuitem"], [role="listbox"] [role="button"]').filter({ hasText: wanted });
