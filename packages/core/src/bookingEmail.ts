@@ -57,6 +57,10 @@ export function customerConfirmation(o: { id: string; storeName: string; s: Book
   const time = zonedClock(Date.parse(b.start), s.timeZone);
   const addr = fullAddress(b);
   const change = s.phone ? `Need to change it? Call or text ${s.phone}.` : `Need to change it? Just reply to this email.`;
+  const links = calendarLinks({ startIso: b.start, minutes: s.minutes, title: `${o.storeName}: free measure`, address: addr,
+    details: `${o.storeName} is coming to measure (${b.projectType}).${s.phone ? ` To change it, call or text ${s.phone}.` : ""}` });
+  const calBtn = (href: string, label: string) =>
+    `<a href="${esc(href)}" style="display:inline-block;margin:0 6px 8px 0;padding:10px 14px;border:1px solid #CFCBC0;border-radius:10px;color:#16201B;text-decoration:none;font-size:14px;font-weight:600">${label}</a>`;
   const text = [
     `Hi ${b.firstName.trim()},`, "",
     `You're booked for a free measure with ${o.storeName}.`, "",
@@ -64,12 +68,16 @@ export function customerConfirmation(o: { id: string; storeName: string; s: Book
     `Where: ${addr}`,
     `Project: ${b.projectType}`, "",
     `We'll measure, go over options with you, and send you a written estimate after the visit. No cost and no deposit.`, "",
-    change, "", `${o.storeName}`,
+    change, "",
+    `Add it to your calendar:`, `Google: ${links.google}`, `Outlook: ${links.outlook}`, `Apple: open the visit.ics file attached`, "",
+    `${o.storeName}`,
   ].join("\n");
   const html = layout(`You're booked, ${b.firstName.trim()}`,
     `<p style="margin:0 0 16px;font-size:15px">Free measure with <b>${esc(o.storeName)}</b>.</p>
 <table style="border-collapse:collapse;margin:0 0 16px">${row("When", `${esc(day)} at ${esc(time)}`)}${row("Where", esc(addr))}${row("Project", esc(b.projectType))}</table>
 <p style="margin:0 0 12px;font-size:15px;line-height:1.5">We'll measure, go over options with you, and send you a written estimate after the visit. No cost and no deposit.</p>
+<p style="margin:0 0 8px;font-size:14px;font-weight:700">Add it to your calendar</p>
+<div style="margin:0 0 16px">${calBtn(links.google, "Google Calendar")}${calBtn(links.outlook, "Outlook")}<span style="display:inline-block;font-size:13px;color:#5C665F">Apple: open the attached visit.ics</span></div>
 <p style="margin:0;font-size:15px">${s.phone ? `Need to change it? Call or text <a href="tel:${s.phone.replace(/\D/g, "")}" style="color:#1F6B45;font-weight:600">${esc(s.phone)}</a>.` : "Need to change it? Just reply to this email."}</p>`,
     `${esc(o.storeName)} · The calendar file attached adds this visit to your phone.`);
   return {
@@ -102,4 +110,18 @@ export function shopNotice(o: { storeName: string; s: BookingSettings; b: Bookin
 <p style="margin:0"><a href="${esc(o.appUrl)}" style="display:inline-block;background:#1F6B45;color:#fff;text-decoration:none;font-weight:600;padding:12px 18px;border-radius:12px">Open in the app${o.photos ? ` (${o.photos} photo${o.photos > 1 ? "s" : ""})` : ""}</a></p>`,
     `Booked on your online booking page. It's added to the Clover calendar automatically.`);
   return { to: s.notifyEmail, replyTo: b.email.trim(), subject: `New visit: ${who}, ${day.replace(/^\w+, /, "")} at ${time}`, text, html };
+}
+
+/** One-tap "add to calendar" links for the confirmation screen and email (Apple uses the .ics file). */
+export function calendarLinks(o: { startIso: string; minutes: number; title: string; address: string; details: string }) {
+  const start = Date.parse(o.startIso);
+  const end = start + o.minutes * 60_000;
+  const compact = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}/, "");
+  const q = (p: Record<string, string>) => new URLSearchParams(p).toString();
+  return {
+    google: `https://calendar.google.com/calendar/render?${q({ action: "TEMPLATE", text: o.title, dates: `${compact(start)}/${compact(end)}`, details: o.details, location: o.address })}`,
+    outlook: `https://outlook.live.com/calendar/0/deeplink/compose?${q({ path: "/calendar/action/compose", rru: "addevent", subject: o.title, startdt: iso(start), enddt: iso(end), location: o.address, body: o.details })}`,
+    office365: `https://outlook.office.com/calendar/0/deeplink/compose?${q({ path: "/calendar/action/compose", rru: "addevent", subject: o.title, startdt: iso(start), enddt: iso(end), location: o.address, body: o.details })}`,
+  };
 }

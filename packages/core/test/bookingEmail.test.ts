@@ -38,3 +38,14 @@ describe("booking emails", () => {
     expect(ics.split("\r\n").every((l) => l.length <= 75)).toBe(true);
   });
 });
+
+describe("calendar links", () => {
+  it("Google and Outlook get the right start, end and place", async () => {
+    const { calendarLinks } = await import("../src");
+    const l = calendarLinks({ startIso: "2026-11-26T13:15:00.000Z", minutes: 30, title: "Leal: free measure", address: "130 North Ave, Hillside 07205", details: "x" });
+    expect(l.google).toContain("dates=20261126T131500Z%2F20261126T134500Z");
+    expect(l.google).toContain("location=130+North+Ave%2C+Hillside+07205");
+    expect(l.outlook).toContain("startdt=2026-11-26T13%3A15%3A00Z");
+    expect(l.outlook).toContain("enddt=2026-11-26T13%3A45%3A00Z");
+  });
+});

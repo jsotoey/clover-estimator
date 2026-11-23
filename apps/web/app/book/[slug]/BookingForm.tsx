@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { checkBookingRequest, visitIcs, type DaySlots } from "@ce/core";
+import { calendarLinks, checkBookingRequest, visitIcs, type DaySlots } from "@ce/core";
 import { toCloverJpeg } from "@/lib/photos";
 
 interface Info { name: string; service: string; phone: string | null; minutes: number; projectTypes: string[]; days: DaySlots[] }
@@ -170,10 +170,34 @@ export default function BookingForm({ slug, name, service, accent, tagline }: { 
             <h2 className="mt-4 font-display text-2xl font-bold">Your visit is booked</h2>
             <p className="mt-2 text-xl font-semibold">{when}</p>
             <p className="mt-1 text-muted">{[f.street, f.unit, f.city].filter(Boolean).join(", ")}</p>
-            <button onClick={calendarFile} className="mx-auto mt-5 flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 font-semibold text-white">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></svg>
-              Add to my calendar
-            </button>
+            <div className="mt-6">
+              <p className="text-sm font-bold">Add it to your calendar</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(() => {
+                  const address = `${f.street}${f.unit ? `, ${f.unit}` : ""}, ${f.city} ${f.zip}`;
+                  const links = calendarLinks({ startIso: done.start, minutes: done.minutes, title: `${name}: free measure`, address,
+                    details: `${name} is coming to measure (${f.projectType}).${info?.phone ? ` To change it, call or text ${info.phone}.` : ""}` });
+                  const cls = "flex h-12 items-center justify-center gap-2 rounded-xl border border-edge bg-white px-3 text-sm font-semibold transition hover:border-[var(--accent)]";
+                  return (
+                    <>
+                      <a href={done.id !== "visit" ? `/api/visit/${done.id}` : "#"} onClick={(e) => { if (done.id === "visit") { e.preventDefault(); calendarFile(); } }} className={cls}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.9-.9-3.1-.8c-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.4-.9-2.4-3.7zM14.2 5.8c.6-.8 1.1-1.8 1-2.8-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.7 1 .1 2-.5 2.7-1.3z" /></svg>
+                        Apple
+                      </a>
+                      <a href={links.google} target="_blank" rel="noopener noreferrer" className={cls}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2" fill="none" stroke="#4285F4" strokeWidth="2" /><path d="M3 9h18" stroke="#EA4335" strokeWidth="2" /><path d="M8 2v4M16 2v4" stroke="#34A853" strokeWidth="2" strokeLinecap="round" /></svg>
+                        Google
+                      </a>
+                      <a href={links.outlook} target="_blank" rel="noopener noreferrer" className={cls}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="2" fill="#0A64C2" /><ellipse cx="9" cy="12" rx="3" ry="3.6" fill="none" stroke="#fff" strokeWidth="1.8" /><path d="M15 8h6v9h-6" fill="none" stroke="#0A64C2" strokeWidth="1.8" /></svg>
+                        Outlook
+                      </a>
+                      <a href={links.office365} target="_blank" rel="noopener noreferrer" className={cls}>Office 365</a>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
             <div className="mt-6 rounded-2xl bg-paper p-4 text-left">
               <p className="text-sm font-bold">What happens next</p>
               <ol className="mt-2 flex flex-col gap-2 text-sm text-muted">
