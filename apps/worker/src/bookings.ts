@@ -32,7 +32,7 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
   const { rows } = await db().query<{
     id: string; merchant_id: number; starts_at: Date; booking: unknown; first_name: string; last_name: string;
     email: string; phone: string; street: string; unit: string | null; city: string; zip: string;
-    project_type: string; details: string; photos: string;
+    project_type: string; details: string; photos: string; text_consent: boolean;
   }>(
     `UPDATE bookings b SET status = 'booking', updated_at = now()
      FROM merchants m
@@ -84,6 +84,7 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
       service: s.service, employee: s.employee, note: visitNote(req, Number(job.photos)),
     }, {
       dryRun: config.dryRun || locked,
+      textConsent: job.text_consent, // agreed on the booking page
       onStep: async (step, url) => { await logEvent(null, "booking_step", { booking: job.id, step, screenshot: url }); },
     });
     await db().query(`UPDATE bookings SET status = $2, error = $3, updated_at = now() WHERE id = $1`, [

@@ -77,6 +77,7 @@ export default function BookingForm({ slug, name, service }: { slug: string; nam
     setBusy(true); setErr("");
     const body = new FormData();
     for (const [k, v] of Object.entries(req)) body.append(k, v);
+    body.append("consent", "yes"); // shown next to the Book button: agreeing is part of booking
     for (const p of photos) body.append("photos", p.file, p.file.name);
     try {
       const r = await fetch(`/api/book/${slug}`, { method: "POST", body });
@@ -220,6 +221,7 @@ export default function BookingForm({ slug, name, service }: { slug: string; nam
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-lg px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-3">
           {err && <p role="alert" className="mb-2 rounded-xl bg-bad-soft px-3 py-2 text-sm text-bad">{err}</p>}
+          <p className="mb-2 text-center text-xs leading-snug text-muted">By booking, you agree to get texts and emails from {name} about this appointment. Msg &amp; data rates may apply.</p>
           <button type="button" className={btnPrimary} disabled={busy || !info} onClick={submit}>
             {busy ? "Booking…" : startLabel && selectedDay ? `Book ${dayFmt(selectedDay.date, { weekday: "short", month: "short", day: "numeric" })} at ${startLabel}` : "Book my visit"}
           </button>

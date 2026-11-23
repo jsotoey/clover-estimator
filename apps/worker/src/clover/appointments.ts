@@ -39,20 +39,23 @@ export async function pickOption(page: Page, name: string): Promise<boolean> {
 }
 
 /**
- * Picking a customer with a phone opens Clover's "Confirm consent" box (automated texts to that phone),
- * which blocks the rest of the form. The bot never gives consent on a customer's behalf: it closes the
- * box, so Clover won't text them (email still works). Turning on texts needs the customer's own consent.
+ * For a customer with a phone, Clover shows a "Confirm consent" box (automated appointment texts) when
+ * the customer is picked and again on Save, and won't save until it's confirmed. The bot confirms only
+ * when the customer agreed on our booking page (consented = true); otherwise it closes the box, and Save
+ * will then be refused with a clear message.
  */
-async function dismissTextConsent(page: Page, waitMs = 3000) {
+async function handleTextConsent(page: Page, consented: boolean, waitMs = 3000): Promise<boolean> {
   const dialog = page.getByRole("dialog", { name: /confirm consent/i });
-  // It can show up a moment after the customer is picked, so wait for it (isVisible doesn't wait).
-  if (!(await dialog.waitFor({ state: "visible", timeout: waitMs }).then(() => true).catch(() => false))) return;
-  await dialog.getByRole("button", { name: /^close$/i }).click().catch(() => {});
+  // It shows up a moment after the click, so wait for it (isVisible doesn't wait).
+  if (!(await dialog.waitFor({ state: "visible", timeout: waitMs }).then(() => true).catch(() => false))) return false;
+  const btn = consented ? dialog.getByRole("button", { name: /^confirm$/i }) : dialog.getByRole("button", { name: /^close$/i });
+  await btn.click().catch(() => {});
   await dialog.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
   if (await dialog.isVisible().catch(() => false)) await page.keyboard.press("Escape").catch(() => {});
+  return true;
 }
 
-async function chooseService(page: Page, service: string) {
+async function chooseService(page: Page, service: string, consented: boolean) {
   // Mapped Nov 23 from the live form: the service picker is a search combobox labeled "Item".
   const box = await firstVisible([
     page.getByRole("combobox", { name: /^\s*item\b/i }),
@@ -61,14 +64,14 @@ async function chooseService(page: Page, service: string) {
     page.getByLabel(/service/i),
   ], 6000);
   if (!box) throw new FillError(`Couldn't find Clover's service picker on the appointment form. Nothing was booked.`);
-  await dismissTextConsent(page, 500);
+  await handleTextConsent(page, consented, 500);
   await box.click();
   const tag = await box.evaluate((el) => el.tagName).catch(() => "");
   const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const wanted = new RegExp(`^\\s*${esc(service)}`, "i");
   // Search with the start of the name (symbols like "&" can trip up Clover's search), then pick the exact one.
   for (const q of [service.split(/[&,(/]/)[0].trim(), service, ""]) {
-    await dismissTextConsent(page, 300);
+    await handleTextConsent(page, consented, 300);
     if (tag === "INPUT") {
       await box.fill(q).catch(() => {});
       await page.waitForTimeout(1500);
@@ -119,7 +122,7 @@ async function enabled(loc: Locator, ms = 6000): Promise<boolean> {
 
 export async function bookAppointment(
   page: Page, who: { customer: Estimate["customer"] }, a: AppointmentFill,
-  opts: { dryRun: boolean; onStep?: (step: string, url: string) => Promise<void> }
+  opts: { dryRun: boolean; textConsent?: boolean; onStep?: (step: string, url: string) => Promise<void> }
 ): Promise<{ booked: boolean }> {
   const step = async (name: string) => opts.onStep?.(name, await capture(page, `appointment-${name}`, { aria: true }));
 
@@ -132,8 +135,8 @@ export async function bookAppointment(
   await step("01-form");
 
   await selectOrCreateCustomer(page, who);
-  await dismissTextConsent(page);
-  await chooseService(page, a.service);
+  await handleTextConsent(page, !!opts.textConsent);
+  await chooseService(page, a.service, !!opts.textConsent);
   if (a.employee) await chooseEmployee(page, a.employee);
 
   const date = page.getByRole("textbox", { name: /^date/i });
@@ -162,6 +165,11 @@ export async function bookAppointment(
   await save.click();
   for (let i = 0; i < 15; i++) {
     await page.waitForTimeout(1000);
+    if (await handleTextConsent(page, !!opts.textConsent, 200)) {
+      if (!opts.textConsent)
+        throw new FillError("Clover needs the customer's OK for appointment texts before it saves, and this customer didn't give it. Nothing was booked.");
+      continue;
+    }
     const stillOpen = await page.getByRole("heading", { name: /create appointment/i }).isVisible().catch(() => false);
     if (!stillOpen) { await step("03-saved"); return { booked: true }; }
     const err = await page.locator('[role="alert"]').filter({ hasText: /\S/ }).first().innerText().catch(() => "");

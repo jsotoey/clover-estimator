@@ -71,10 +71,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
     }
     const ins = await client.query<{ id: string }>(
       `INSERT INTO bookings (merchant_id, starts_at, minutes, buffer_minutes, first_name, last_name, email, phone,
-                             street, unit, city, zip, project_type, details, ip)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+                             street, unit, city, zip, project_type, details, ip, text_consent)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
       [store.id, b.start, store.settings.minutes, store.settings.bufferMinutes, b.firstName, b.lastName, b.email, b.phone,
-       b.street, b.unit ?? null, b.city, b.zip, b.projectType, b.details, ip]);
+       b.street, b.unit ?? null, b.city, b.zip, b.projectType, b.details, ip, str("consent") === "yes"]);
     const id = ins.rows[0].id;
     for (const f of photos)
       await client.query(

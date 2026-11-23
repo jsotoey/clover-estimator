@@ -106,6 +106,9 @@ CREATE INDEX IF NOT EXISTS bookings_merchant_idx ON bookings (merchant_id, start
 CREATE INDEX IF NOT EXISTS bookings_status_idx ON bookings (status, updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_start ON bookings (merchant_id, starts_at) WHERE status <> 'cancelled';
 ALTER TABLE files ADD COLUMN IF NOT EXISTS booking_id uuid REFERENCES bookings(id) ON DELETE CASCADE;
+-- The customer agreed (on the booking page) to texts/emails about the appointment. Clover won't save an
+-- appointment for a customer with a phone until that consent is confirmed, so the bot confirms only when true.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS text_consent boolean NOT NULL DEFAULT false;
 `;
 
 /** Rows created before multi-store support belong to the first store. */
