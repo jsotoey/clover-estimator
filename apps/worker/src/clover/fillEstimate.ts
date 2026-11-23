@@ -88,11 +88,18 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   // 1. Open a new estimate.
   await page.goto(estimatesUrl(), { waitUntil: "domcontentloaded", timeout: T.nav });
   await page.waitForLoadState("networkidle").catch(() => {});
-  const create = await must([
+  const create = await firstVisible([
     page.getByRole("button", { name: /create new estimate/i }),
     page.getByRole("link", { name: /create new estimate/i }),
     page.getByRole("button", { name: /(create|new) estimate/i }),
-  ], '"Create new estimate"', 15_000);
+  ], 20_000);
+  if (!create) {
+    // Say what Clover showed instead, with a picture, rather than a bare "couldn't find it".
+    await step("00-estimates-page").catch(() => {});
+    if (/\/login|signin|sign-in/i.test(page.url()))
+      throw new FillError("Clover signed the bot out before it could start. Sign in to Clover in the app, then tap Try again.");
+    throw new FillError(`Clover's Estimates page didn't load its "Create new estimate" button (it showed ${new URL(page.url()).pathname}). Tap Try again.`);
+  }
   await create.click();
   await page.waitForLoadState("networkidle").catch(() => {});
   await step("01-new-form");
