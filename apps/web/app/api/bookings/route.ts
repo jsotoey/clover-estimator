@@ -13,7 +13,7 @@ export async function GET() {
      FROM bookings b
      WHERE b.merchant_id = $1 AND b.starts_at > now() - interval '14 days'
      ORDER BY (b.starts_at < now()), CASE WHEN b.starts_at >= now() THEN b.starts_at END ASC, b.starts_at DESC
-     LIMIT 100`, [s.merchant.id]);
+     LIMIT 300`, [s.merchant.id]);
   const { rows: m } = await db().query<{ slug: string; on: boolean }>(
     `SELECT slug, coalesce((booking->>'enabled')::boolean, false) AS on FROM merchants WHERE id = $1`, [s.merchant.id]);
   return Response.json({ bookings: rows, bookingUrl: m[0]?.on ? `/book/${m[0].slug}` : null });

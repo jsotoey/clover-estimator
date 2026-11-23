@@ -17,10 +17,11 @@ export async function bookingStore(slug: string): Promise<BookingStore | null> {
 }
 
 /** Visits already on the books (anything not cancelled keeps its time), for the slot math. */
-export async function busyTimes(merchantId: number, run: Pool | PoolClient = db()): Promise<Busy[]> {
+export async function busyTimes(merchantId: number, run: Pool | PoolClient = db(), exceptId: string | null = null): Promise<Busy[]> {
   const { rows } = await run.query<{ starts_at: Date; minutes: number; buffer_minutes: number }>(
     `SELECT starts_at, minutes, buffer_minutes FROM bookings
-     WHERE merchant_id = $1 AND status <> 'cancelled' AND starts_at > now() - interval '1 day' AND starts_at < now() + interval '90 days'`,
-    [merchantId]);
+     WHERE merchant_id = $1 AND status <> 'cancelled' AND starts_at > now() - interval '1 day' AND starts_at < now() + interval '90 days'
+       AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+    [merchantId, exceptId]);
   return rows.map((r) => ({ start: new Date(r.starts_at).getTime(), minutes: r.minutes, bufferMinutes: r.buffer_minutes }));
 }
