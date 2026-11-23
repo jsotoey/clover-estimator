@@ -48,8 +48,14 @@ async function handleTextConsent(page: Page, consented: boolean, waitMs = 3000):
   const dialog = page.getByRole("dialog", { name: /confirm consent/i });
   // It shows up a moment after the click, so wait for it (isVisible doesn't wait).
   if (!(await dialog.waitFor({ state: "visible", timeout: waitMs }).then(() => true).catch(() => false))) return false;
-  const btn = consented ? dialog.getByRole("button", { name: /^confirm$/i }) : dialog.getByRole("button", { name: /^close$/i });
-  await btn.click().catch(() => {});
+  const btn = consented ? dialog.getByRole("button", { name: /^\s*confirm\b/i }).first() : dialog.getByRole("button", { name: /^\s*close\b/i }).first();
+  // Short limits: a button that never becomes clickable must not hold the bot for 30 seconds a try.
+  if (consented && !(await btn.isEnabled({ timeout: 1500 }).catch(() => false))) {
+    // Some versions of the box want a checkbox ticked before Confirm unlocks.
+    const box = dialog.getByRole("checkbox").first();
+    if (await box.isVisible().catch(() => false)) await box.check({ timeout: 3000 }).catch(() => {});
+  }
+  await btn.click({ timeout: 4000 }).catch(() => {});
   await dialog.waitFor({ state: "hidden", timeout: 4000 }).catch(() => {});
   if (await dialog.isVisible().catch(() => false)) await page.keyboard.press("Escape").catch(() => {});
   return true;
@@ -170,11 +176,19 @@ export async function bookAppointment(
   await opts.onStep?.("02b-saving", "");
   await save.click({ timeout: 15_000 });
   await opts.onStep?.("02c-save-clicked", "");
+  let consentBoxes = 0;
   for (let i = 0; i < 15; i++) {
     await page.waitForTimeout(1000);
-    if (await handleTextConsent(page, !!opts.textConsent, 200)) {
+    const consentBox = page.getByRole("dialog", { name: /confirm consent/i });
+    if (await consentBox.isVisible().catch(() => false)) {
       if (!opts.textConsent)
         throw new FillError("Clover needs the customer's OK for appointment texts before it saves, and this customer didn't give it. Nothing was booked.");
+      if (++consentBoxes === 1) await step("02d-consent-box");
+      if (consentBoxes > 3) {
+        const text = (await consentBox.innerText({ timeout: 2000 }).catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+        throw new FillError(`Clover's text-consent box wouldn't close after Save${text ? ` ("${text}")` : ""}. Check the Clover calendar before trying again.`);
+      }
+      await handleTextConsent(page, true, 200);
       continue;
     }
     const stillOpen = await page.getByRole("heading", { name: /create appointment/i }).isVisible().catch(() => false);
