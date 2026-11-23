@@ -40,8 +40,10 @@ export async function processBooking(allowedToSend: (raw: unknown) => boolean): 
   const store = await storeById(job.merchant_id);
   if (!store) { await fail("Store not found"); return true; }
   if (signedIn.get(store.id) === false) {
-    // Waiting for someone to sign this store in to Clover; don't keep loading Clover's login page.
-    await db().query(`UPDATE bookings SET status = 'to_book' WHERE id = $1`, [job.id]);
+    // Waiting for someone to sign this store in to Clover; don't keep loading Clover's login page,
+    // but make sure the app is asking for that sign-in (requestLogin reuses an open request).
+    await db().query(`UPDATE bookings SET status = 'to_book', error = 'Waiting for someone to sign in to Clover in the app' WHERE id = $1`, [job.id]);
+    await requestLogin("booking", store.id);
     return false;
   }
   const s = bookingSettings(job.booking);
