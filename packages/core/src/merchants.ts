@@ -75,6 +75,37 @@ ALTER TABLE installs DROP CONSTRAINT IF EXISTS installs_status_check;
 ALTER TABLE installs ADD CONSTRAINT installs_status_check
   CHECK (status IN ('to_book','booking','tentative','to_confirm','confirmed','to_reschedule','failed','done','cancelled'));
 ALTER TABLE installs ADD COLUMN IF NOT EXISTS booked_date date;   -- the date actually in Clover's calendar
+
+-- Online booking (Nov 23): customers book a visit (e.g. a free measure) on our page; the worker puts it
+-- on the store's Clover calendar. Settings are JSON (see bookingSettings in booking.ts); null = off.
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS booking jsonb;
+CREATE TABLE IF NOT EXISTS bookings (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id     integer NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+  starts_at       timestamptz NOT NULL,
+  minutes         integer NOT NULL,
+  buffer_minutes  integer NOT NULL,
+  first_name      text NOT NULL,
+  last_name       text NOT NULL,
+  email           text NOT NULL,
+  phone           text NOT NULL,
+  street          text NOT NULL,
+  unit            text,
+  city            text NOT NULL,
+  zip             text NOT NULL,
+  project_type    text NOT NULL,
+  details         text NOT NULL,
+  status          text NOT NULL DEFAULT 'to_book'
+                  CHECK (status IN ('to_book','booking','booked','test_run','failed','cancelled')),
+  error           text,
+  ip              text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS bookings_merchant_idx ON bookings (merchant_id, starts_at);
+CREATE INDEX IF NOT EXISTS bookings_status_idx ON bookings (status, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_start ON bookings (merchant_id, starts_at) WHERE status <> 'cancelled';
+ALTER TABLE files ADD COLUMN IF NOT EXISTS booking_id uuid REFERENCES bookings(id) ON DELETE CASCADE;
 `;
 
 /** Rows created before multi-store support belong to the first store. */

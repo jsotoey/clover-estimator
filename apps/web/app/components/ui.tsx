@@ -50,18 +50,20 @@ export function TopBar({ title, business, onBack, backHref, right }: {
 const NAV_ICONS = {
   new: <path d="M12 5v14M5 12h14" />,
   list: <><path d="M7 3h7l4 4v14H7z" /><path d="M10 12h5M10 16h5" /></>,
+  visits: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
   clover: <><path d="M10 14l4-4" /><path d="M8.5 11.5L6 14a3.5 3.5 0 0 0 5 5l2.5-2.5M15.5 12.5L18 10a3.5 3.5 0 0 0-5-5l-2.5 2.5" /></>,
 };
 
-/** Bottom menu, where the thumb is: New / Estimates / Clover. */
-export function BottomNav({ active, onNew, onList }: { active: "new" | "list" | "clover"; onNew?: () => void; onList?: () => void }) {
+/** Bottom menu, where the thumb is: New / Estimates / Visits / Clover. */
+export function BottomNav({ active, onNew, onList }: { active: "new" | "list" | "visits" | "clover"; onNew?: () => void; onList?: () => void }) {
   const items = [
     { key: "new" as const, label: "New", href: "/", on: onNew },
     { key: "list" as const, label: "Estimates", href: "/?recent=1", on: onList },
+    { key: "visits" as const, label: "Visits", href: "/visits", on: undefined },
     { key: "clover" as const, label: "Clover", href: "/clover", on: undefined },
   ];
   return (
-    <nav aria-label="Main" className="grid grid-cols-3 border-t border-line bg-white pb-[max(14px,env(safe-area-inset-bottom))] pt-1.5">
+    <nav aria-label="Main" className="grid grid-cols-4 border-t border-line bg-white pb-[max(14px,env(safe-area-inset-bottom))] pt-1.5">
       {items.map((it) => {
         const isOn = it.key === active;
         const cls = `flex flex-col items-center gap-[3px] py-1.5 text-xs ${isOn ? "font-semibold text-brand" : "font-medium text-muted"}`;

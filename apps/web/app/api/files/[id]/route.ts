@@ -12,7 +12,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
        e.merchant_id = $2
        -- worker screenshots aren't tied to an estimate row, only listed in its screenshot_urls
        OR EXISTS (SELECT 1 FROM estimates e2 WHERE e2.merchant_id = $2 AND ('/api/files/' || f.id::text) = ANY(e2.screenshot_urls))
-       OR (f.estimate_id IS NULL AND $3::boolean))`,
+       -- photos a customer attached to an online booking
+       OR EXISTS (SELECT 1 FROM bookings b WHERE b.id = f.booking_id AND b.merchant_id = $2)
+       OR (f.estimate_id IS NULL AND f.booking_id IS NULL AND $3::boolean))`,
     [id, s.merchant.id, s.role === "admin"]);
   if (!rows[0]) return new Response("Not found", { status: 404 });
   return new Response(new Uint8Array(rows[0].data), {

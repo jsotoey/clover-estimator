@@ -1,5 +1,5 @@
 import type { Locator, Page } from "playwright";
-import { EstimateSchema, type Estimate } from "@ce/core";
+import type { Estimate } from "@ce/core";
 import { capture } from "../browser";
 import { config } from "../config";
 import { FillError, firstVisible, must, selectOrCreateCustomer, toUSDate } from "./fillEstimate";
@@ -68,10 +68,9 @@ async function enabled(loc: Locator, ms = 6000): Promise<boolean> {
 }
 
 export async function bookAppointment(
-  page: Page, rawEstimate: unknown, a: AppointmentFill,
+  page: Page, who: { customer: Estimate["customer"] }, a: AppointmentFill,
   opts: { dryRun: boolean; onStep?: (step: string, url: string) => Promise<void> }
 ): Promise<{ booked: boolean }> {
-  const estimate: Estimate = EstimateSchema.parse(rawEstimate);
   const step = async (name: string) => opts.onStep?.(name, await capture(page, `appointment-${name}`, { aria: true }));
 
   await page.goto(`${config.cloverBaseUrl}/appointments/calendar`, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -82,7 +81,7 @@ export async function bookAppointment(
     throw new FillError(`Clover needs at least one bookable service before it can book appointments. Add "${a.service}" in Items and services. Nothing was booked.`);
   await step("01-form");
 
-  await selectOrCreateCustomer(page, estimate);
+  await selectOrCreateCustomer(page, who);
   await chooseService(page, a.service);
   if (a.employee) await chooseEmployee(page, a.employee);
 

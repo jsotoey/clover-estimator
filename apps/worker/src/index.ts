@@ -3,6 +3,7 @@ import { newPage, saveSession, useStore } from "./browser";
 import { checkSession, assertRightStore } from "./clover/session";
 import { loadStores, signedIn, storeById } from "./stores";
 import { processInstall, planMissingInstalls } from "./installPlan";
+import { processBooking } from "./bookings";
 import { runSetupTask } from "./scout";
 import { FillError, deliveryNote } from "./clover/fillEstimate";
 import { runRecon } from "./recon";
@@ -182,6 +183,7 @@ async function main() {
       if (await processInvoice(allowedToSend).catch((e) => { console.error("invoice error", e); return false; })) continue;
       await planMissingInstalls().catch((e) => console.error("install sweep error", e));
       if (await processInstall(allowedToSend).catch((e) => { console.error("install error", e); return false; })) continue;
+      if (await processBooking(allowedToSend).catch((e) => { console.error("booking error", e); return false; })) continue;
       if (await checkAcceptances().catch((e) => { console.error("acceptance check error", e); return false; })) continue;
       if (await runSetupTask().catch((e) => { console.error("setup error", e); return false; })) continue;
       if (await runScoutTask().catch((e) => { console.error("scout error", e); return false; })) continue;

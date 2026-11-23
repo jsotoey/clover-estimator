@@ -162,7 +162,8 @@ export async function fillEstimate(page: Page, rawEstimate: unknown, rawComputed
   return { cloverNumber: cloverNumber ?? (await findEstimateNumber(page, estimate.customer.name, computed.totalCents)), cloverTotalCents: cloverTotal, sent: true };
 }
 
-export async function selectOrCreateCustomer(page: Page, e: Estimate) {
+/** Only the customer (and delivery choice) matter here, so online bookings can use it too. */
+export async function selectOrCreateCustomer(page: Page, e: { customer: Estimate["customer"]; delivery?: Estimate["delivery"] }) {
   const search = await must([
     page.getByPlaceholder(/search by email, phone or name/i),
     page.getByLabel(/select customer/i),

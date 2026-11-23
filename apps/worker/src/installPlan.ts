@@ -1,4 +1,4 @@
-import { earliestInstall, pickCrew, weekOf, type CrewInfo } from "@ce/core";
+import { EstimateSchema, earliestInstall, pickCrew, weekOf, type CrewInfo } from "@ce/core";
 import { db, logEvent } from "./db";
 
 /**
@@ -89,7 +89,7 @@ export async function processInstall(allowedToSend: (estimate: unknown) => boole
       job.num ? `Estimate #${job.num}` : null,
       "We'll confirm once everything arrives.",
     ].filter(Boolean).join(". ").replace(/\.\./g, ".");
-    const res = await bookAppointment(page, job.estimate, {
+    const res = await bookAppointment(page, EstimateSchema.parse(job.estimate), {
       date: job.install_date, time: job.time, service: job.service, employee: job.crew, note,
     }, {
       dryRun: config.dryRun || locked,
