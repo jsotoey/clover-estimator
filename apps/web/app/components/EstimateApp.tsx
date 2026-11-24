@@ -14,8 +14,8 @@ type Msg = { role: "user" | "assistant"; text: string; photos?: string[] };
 type Ask = { question: string; options: string[]; datePicker: boolean };
 const GREETING = "Tell me about the job: the customer's name and email, the work, the price, and when you start. Talk or type, all in one go. I'll put the estimate together.";
 
-export default function EstimateApp({ businessName, taxRate, admin }: { businessName: string; taxRate: number; admin: boolean }) {
-  const [view, setView] = useState<"chat" | "list">("chat");
+export default function EstimateApp({ businessName, taxRate, admin, start = "chat" }: { businessName: string; taxRate: number; admin: boolean; start?: "chat" | "list" }) {
+  const [view, setView] = useState<"chat" | "list">(start);
   const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "assistant", text: GREETING }]);
@@ -78,14 +78,13 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
 
   useEffect(() => {
     const q = new URLSearchParams(location.search);
-    if (q.get("recent")) {
-      history.replaceState(null, "", "/");
-      void showList();
-    }
+    const open = q.get("id");
+    if (open) void openEstimate(open);
+    else if (start === "list") void showList();
     // "Start estimate" from a visit: fill in who, where and what they told us, then the tech adds the rest.
     const visit = q.get("visit");
     if (visit) {
-      history.replaceState(null, "", "/");
+      history.replaceState(null, "", "/new");
       void (async () => {
         const r = await fetch("/api/bookings", { cache: "no-store" }).catch(() => null);
         const v = r?.ok ? ((await r.json()).bookings as Array<Record<string, string | null>>).find((b) => b.id === visit) : null;
@@ -100,6 +99,7 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
 
   async function showList() {
     setView("list");
+    history.replaceState(null, "", "/estimates");
     const r = await fetch("/api/estimates", { cache: "no-store" });
     if (r.status === 401) return location.reload();
     if (r.ok) setRecent((await r.json()).estimates);
@@ -110,6 +110,7 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
     if (!r.ok) return;
     const d = await r.json();
     setView("chat");
+    history.replaceState(null, "", `/estimates?id=${id}`);
     setEstimateId(id);
     setPhotos(d.photos ?? []); setPendingPhotos(0);
     setAsk(null); setError(""); setInput(""); setChanging(false); setShowEstimate(false);
@@ -202,6 +203,7 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
 
   function startOver() {
     setView("chat");
+    history.replaceState(null, "", "/new");
     setEstimateId(null); setMsgs([{ role: "assistant", text: GREETING }]); setPhotos([]);
     setPendingPhotos(0); setReview(null); setStatus(null); setInput(""); setError(""); setAsk(null);
     setChanging(false); setShowEstimate(false);
@@ -255,8 +257,8 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
           <>
             {msgs.map((m, i) => (
               <div key={i} className={m.role === "user"
-                ? "max-w-[85%] self-end whitespace-pre-wrap rounded-[18px_18px_4px_18px] bg-ink px-3.5 py-3 text-[15px] leading-relaxed text-white"
-                : "max-w-[88%] self-start whitespace-pre-wrap rounded-[18px_18px_18px_4px] border border-line bg-white px-3.5 py-3 text-[15px] leading-relaxed"}>
+                ? "max-w-[85%] self-end whitespace-pre-wrap rounded-[20px_20px_6px_20px] bg-ink px-4 py-3 text-[15px] leading-relaxed text-white"
+                : "max-w-[88%] self-start whitespace-pre-wrap rounded-[20px_20px_20px_6px] bg-white px-4 py-3 text-[15px] leading-relaxed shadow-[0_1px_2px_rgba(20,24,27,.06)]"}>
                 {m.photos && m.photos.length > 0 && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <div className="mb-2 flex gap-1.5">{m.photos.map((p) => <img key={p} src={p} alt="Job photo" className="h-14 w-14 rounded-lg object-cover" />)}</div>
@@ -289,18 +291,18 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
 
       {/* Bottom action area */}
       {hasStatus && statusActions && (
-        <div className="border-t border-line bg-white px-4 pb-2.5 pt-3">
+        <div className="rounded-t-[24px] bg-white px-4 pb-3 pt-3.5 shadow-[0_-6px_20px_rgba(20,24,27,.06)]">
           <StatusActions key={actionKey} id={estimateId!} data={status!} onRetry={retry} />
         </div>
       )}
       {!hasStatus && review && !changing && (
-        <div className="flex flex-col gap-2.5 border-t border-line bg-white px-4 pb-2.5 pt-3">
+        <div className="flex flex-col gap-2.5 rounded-t-[24px] bg-white px-4 pb-3 pt-3.5 shadow-[0_-6px_20px_rgba(20,24,27,.06)]">
           <button onClick={approve} disabled={busy} className={btnPrimary}>{busy ? "Working…" : `Approve and ${review.estimate.delivery === "both" ? "send by email and text" : review.estimate.delivery === "sms" ? "text it" : "email it"}`}</button>
           <button onClick={() => startChange()} disabled={busy} className={btnSecondary}>Change something</button>
         </div>
       )}
       {showInput && (
-        <div className="flex flex-col gap-2 border-t border-line bg-white px-4 pb-2.5 pt-3">
+        <div className="flex flex-col gap-2 rounded-t-[24px] bg-white px-4 pb-3 pt-3.5 shadow-[0_-6px_20px_rgba(20,24,27,.06)]">
           {changing && (
             <div className="flex items-center gap-2 overflow-x-auto">
               {CHANGE_CHOICES.map((w) => (
@@ -314,15 +316,15 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
           {mic.trail.length > 0 && <pre className="max-h-32 overflow-auto rounded-lg bg-line/40 p-2 text-[10px] leading-tight">{mic.trail.join("\n")}</pre>}
           <div className="flex items-end gap-2.5">
             <button onClick={() => fileRef.current?.click()} disabled={busy || photos.length >= CLOVER_LIMITS.maxAttachments}
-              aria-label="Add a photo" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-edge bg-white disabled:opacity-40">
+              aria-label="Add a photo" className="flex h-[52px] w-11 shrink-0 items-center justify-center rounded-2xl bg-[#F3F1EC] disabled:opacity-40">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
             </button>
             <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
             <label htmlFor="msg" className="sr-only">Message</label>
-            <textarea id="msg" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} rows={1}
+            <textarea id="msg" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} rows={msgs.length <= 1 && !review ? 3 : 1}
               placeholder={mic.listening ? "Listening… tap the red button to stop" : changing ? "Tell me what to change" : mic.supported ? "Type, or tap the mic to talk" : "Describe the job"}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              className="max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-edge px-3 py-[10px] text-base" />
+              className="max-h-40 min-h-11 min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#F3F1EC] px-3.5 py-3 text-base outline-none focus:ring-2 focus:ring-brand" />
             {mic.supported && (
               <button onClick={() => (mic.listening ? mic.stop() : mic.start(input))} disabled={busy}
                 aria-label={mic.listening ? "Stop listening" : "Talk"} aria-pressed={mic.listening}

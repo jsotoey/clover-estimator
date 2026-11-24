@@ -17,7 +17,9 @@ export async function GET() {
     `SELECT e.id, e.status, e.error, e.clover_estimate_number AS number, e.accepted_at, e.updated_at,
             e.estimate->'customer'->>'name' AS customer, (e.computed->>'totalCents')::int AS total_cents,
             COALESCE((SELECT json_agg(json_build_object('kind', i.kind, 'status', i.status))
-                      FROM invoices i WHERE i.estimate_id = e.id), '[]'::json) AS invoices
+                      FROM invoices i WHERE i.estimate_id = e.id), '[]'::json) AS invoices,
+            (SELECT n.status FROM installs n WHERE n.estimate_id = e.id LIMIT 1) AS install,
+            (SELECT n.install_date::text FROM installs n WHERE n.estimate_id = e.id LIMIT 1) AS install_date
      FROM estimates e WHERE e.estimate IS NOT NULL AND e.merchant_id = $1 ORDER BY e.updated_at DESC LIMIT 40`,
     [s.merchant.id]
   );

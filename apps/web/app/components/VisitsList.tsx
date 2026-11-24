@@ -7,6 +7,7 @@ interface Visit {
   street: string; unit: string | null; city: string; zip: string; project_type: string; details: string;
   status: string; error: string | null; photos: string[];
 }
+interface Install { id: string; estimate_id: string; date: string; status: string; crew: string | null; time: string | null; customer: string | null; address: string | null }
 interface DaySlots { date: string; slots: { start: string; label: string }[] }
 type View = "calendar" | "list";
 
@@ -29,6 +30,7 @@ const label = (k: string, o: Intl.DateTimeFormatOptions) => toD(k).toLocaleDateS
 /** Visits customers booked on the store's booking page: a list, or a day / week / month calendar. */
 export default function VisitsList({ businessName }: { businessName: string }) {
   const [visits, setVisits] = useState<Visit[] | null>(null);
+  const [installs, setInstalls] = useState<Install[]>([]);
   const [url, setUrl] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -41,6 +43,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     if (!r.ok) { setMsg("Couldn't load visits. Pull to refresh."); return; }
     const j = await r.json();
     setVisits(j.bookings);
+    setInstalls(j.installs ?? []);
     setUrl(j.bookingUrl);
   }
   useEffect(() => {
@@ -64,6 +67,12 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     for (const l of m.values()) l.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
     return m;
   }, [active]);
+
+  const installsByDay = useMemo(() => {
+    const m = new Map<string, Install[]>();
+    for (const i of installs) m.set(i.date, [...(m.get(i.date) ?? []), i]);
+    return m;
+  }, [installs]);
 
   const now = Date.now();
   const upcoming = visits?.filter((v) => Date.parse(v.starts_at) >= now - 3600_000) ?? [];
@@ -97,7 +106,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {(v.status === "failed" || v.status === "test_run") && <button className={`${btnSecondary} col-span-2`} onClick={() => act(v.id, "retry")}>Try again</button>}
-            {v.status !== "cancelled" && <a className={`${btnPrimary} col-span-2 text-center`} href={`/?visit=${v.id}`}>Start estimate</a>}
+            {v.status !== "cancelled" && <a className={`${btnPrimary} col-span-2 text-center`} href={`/new?visit=${v.id}`}>Start estimate</a>}
             {v.status !== "cancelled" && v.status !== "booking" && <>
               <button className={btnSecondary} onClick={() => setMoving(v.id)}>Reschedule</button>
               <button className={btnSecondary} onClick={() => act(v.id, "cancel")}>Cancel visit</button>
@@ -112,7 +121,8 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     const [tone, tag] = STATUS[v.status] ?? ["plain", v.status];
     const isOpen = open === v.id;
     return (
-      <li key={v.id} className={`${card} p-4 ${v.status === "cancelled" ? "opacity-60" : ""}`}>
+      <li key={v.id} className={`${card} relative overflow-hidden p-4 pl-5 ${v.status === "cancelled" ? "opacity-60" : ""}`}>
+        <span aria-hidden="true" className={`absolute inset-y-3 left-0 w-1 rounded-r-full ${tone === "bad" ? "bg-bad" : tone === "warn" ? "bg-[#D98A2B]" : "bg-brand"}`} />
         <button className="flex w-full items-start justify-between gap-3 text-left" onClick={() => { setOpen(isOpen ? null : v.id); setMoving(null); }} aria-expanded={isOpen}>
           <div className="min-w-0">
             <p className="font-display text-lg font-bold leading-tight">{timeOnly ? `${clock(v.starts_at)} – ${clock(new Date(Date.parse(v.starts_at) + v.minutes * 60_000).toISOString())}` : when(v.starts_at)}</p>
@@ -126,6 +136,22 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     );
   };
 
+  const installRow = (i: Install) => (
+    <li key={i.id}>
+      <a href={`/estimates?id=${i.estimate_id}`} className={`${card} relative flex items-start justify-between gap-3 overflow-hidden p-4 pl-5`}>
+        <span aria-hidden="true" className={`absolute inset-y-3 left-0 w-1 rounded-r-full ${i.status === "failed" ? "bg-bad" : "bg-[#2B5FA8]"}`} />
+        <div className="min-w-0">
+          <p className="font-display text-lg font-bold leading-tight">{i.time ?? "Install"}</p>
+          <p className="truncate font-semibold">{i.customer ?? "Customer"} · Install</p>
+          <p className="truncate text-sm text-muted">{[i.crew, i.address?.split(",")[0]].filter(Boolean).join(" · ")}</p>
+        </div>
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-bold ${i.status === "booked" ? "bg-[#E4ECF7] text-[#2B5FA8]" : i.status === "failed" ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn"}`}>
+          {i.status === "booked" ? "On Clover calendar" : i.status === "failed" ? "Not in Clover" : "Adding to Clover"}
+        </span>
+      </a>
+    </li>
+  );
+
   // Arrows move a month; the selected day keeps its day number where it can.
   const step = (n: number) => setFocus((f) => {
     const d = toD(f); const day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n);
@@ -137,14 +163,16 @@ export default function VisitsList({ businessName }: { businessName: string }) {
 
   const dayList = (k: string, compact = false) => {
     const list = byDay.get(k) ?? [];
+    const ins = installsByDay.get(k) ?? [];
+    const words = [list.length && `${list.length} visit${list.length > 1 ? "s" : ""}`, ins.length && `${ins.length} install${ins.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
     return (
       <section key={k} className="flex flex-col gap-2">
         <div className={`flex items-baseline justify-between ${k === today ? "text-brand" : ""}`}>
           <span className="font-semibold">{label(k, { weekday: "long", month: "short", day: "numeric" })}{k === today ? " · Today" : ""}</span>
-          <span className="text-sm text-muted">{list.length ? `${list.length} visit${list.length > 1 ? "s" : ""}` : ""}</span>
+          <span className="text-sm text-muted">{words}</span>
         </div>
-        {list.length > 0 && <ul className="flex flex-col gap-2">{list.map((v) => row(v, true))}</ul>}
-        {!compact && !list.length && <p className="text-sm text-muted">Nothing booked.</p>}
+        {(list.length > 0 || ins.length > 0) && <ul className="flex flex-col gap-2">{ins.map(installRow)}{list.map((v) => row(v, true))}</ul>}
+        {!compact && !list.length && !ins.length && <p className="rounded-2xl border-[1.5px] border-dashed border-edge p-4 text-sm text-muted">Nothing booked. Open all day.</p>}
       </section>
     );
   };
@@ -155,19 +183,25 @@ export default function VisitsList({ businessName }: { businessName: string }) {
     const cells = Array.from({ length: 42 }, (_, i) => addDays(start, i));
     const m = first.slice(0, 7);
     return (
-      <div className={`${card} p-2`}>
-        <div className="grid grid-cols-7 text-center text-xs font-semibold text-muted">
+      <div className={`${card} p-3`}>
+        <div className="grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-muted">
           {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={i} className="py-1">{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1">
           {cells.map((k) => {
             const n = byDay.get(k)?.length ?? 0;
+            const ni = installsByDay.get(k)?.length ?? 0;
             const inMonth = k.slice(0, 7) === m;
+            const sel = k === focus;
             return (
               <button key={k} onClick={() => { setFocus(k); setOpen(null); }} aria-pressed={k === focus}
-                className={`flex aspect-square flex-col items-center justify-center rounded-xl text-sm ${inMonth ? "" : "text-muted/50"} ${k === today ? "ring-2 ring-brand" : ""} ${k === focus ? "!bg-brand font-semibold !text-white" : n ? "bg-brand-soft font-semibold text-brand" : ""}`}>
+                aria-label={`${label(k, { weekday: "long", month: "long", day: "numeric" })}${n ? `, ${n} visit${n > 1 ? "s" : ""}` : ""}${ni ? `, ${ni} install${ni > 1 ? "s" : ""}` : ""}`}
+                className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-2xl text-[15px] transition ${inMonth ? "" : "text-muted/40"} ${sel ? "bg-ink font-semibold text-white" : k === today ? "font-bold text-brand" : ""}`}>
                 {Number(k.slice(8))}
-                {n > 0 && <span className="text-[10px] leading-none">{n} visit{n > 1 ? "s" : ""}</span>}
+                <span className="flex h-1.5 gap-0.5">
+                  {Array.from({ length: Math.min(n, 3) }, (_, i) => <span key={`v${i}`} className={`h-1.5 w-1.5 rounded-full ${sel ? "bg-[#7FD1A3]" : "bg-brand"}`} />)}
+                  {Array.from({ length: Math.min(ni, 2) }, (_, i) => <span key={`i${i}`} className={`h-1.5 w-1.5 rounded-full ${sel ? "bg-[#9DBBE6]" : "bg-[#2B5FA8]"}`} />)}
+                </span>
               </button>
             );
           })}
@@ -183,23 +217,25 @@ export default function VisitsList({ businessName }: { businessName: string }) {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <TopBar title="Visits" business={businessName}
-        right={url ? <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-brand-soft px-3 py-2 text-sm font-semibold text-brand">Booking page ↗</a> : undefined} />
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper">
+      <TopBar title="Calendar" business={businessName}
+        right={url ? <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-white px-3 py-2 text-[13px] font-semibold text-brand shadow-[0_1px_2px_rgba(20,24,27,.08)]">Booking page ↗</a> : undefined} />
       <main className="flex flex-1 flex-col gap-4 p-4 pb-6">
         {!url && visits && <p className="text-sm text-muted">Online booking is off for this store.</p>}
 
-        <div className="grid grid-cols-2 gap-1 rounded-full bg-line/60 p-1 text-sm font-semibold" role="tablist">
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[#ECEAE3] p-1 text-[13px] font-semibold" role="tablist">
           {(["calendar", "list"] as View[]).map((v) => (
             <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={`rounded-full py-2 capitalize ${view === v ? "bg-white shadow-sm" : "text-muted"}`}>{v}</button>
+              className={`h-9 rounded-xl capitalize transition ${view === v ? "bg-white shadow-[0_1px_3px_rgba(20,24,27,.12)]" : "text-muted"}`}>{v === "calendar" ? "Month" : "List"}</button>
           ))}
         </div>
         {view === "calendar" && (
           <div className="flex items-center justify-between">
-            <button onClick={() => step(-1)} className="rounded-full px-3 py-2 text-lg" aria-label="Previous">‹</button>
-            <button onClick={() => { setFocus(today); setOpen(null); }} className="font-display text-lg font-bold">{title}</button>
-            <button onClick={() => step(1)} className="rounded-full px-3 py-2 text-lg" aria-label="Next">›</button>
+            <button onClick={() => step(-1)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_1px_2px_rgba(20,24,27,.08)]" aria-label="Previous month">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg></button>
+            <button onClick={() => { setFocus(today); setOpen(null); }} className="font-display text-xl font-bold tracking-tight">{title}</button>
+            <button onClick={() => step(1)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_1px_2px_rgba(20,24,27,.08)]" aria-label="Next month">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg></button>
           </div>
         )}
 

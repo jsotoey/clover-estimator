@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { SectionLabel, card, btnPrimary, btnSecondary, btnDanger, money, fmtWhen, fmtDay } from "./ui";
+import { SectionLabel, card, heroCard, Progress, btnPrimary, btnSecondary, btnDanger, money, fmtWhen, fmtDay } from "./ui";
+import { stage } from "@/lib/stage";
 
 export interface InvoiceInfo { kind: "deposit" | "balance"; status: string; totalCents: number; payLink: string | null; error: string | null; updatedAt?: string; paidAt?: string | null }
 export interface InstallInfo { date: string; earliest: string; status: string; materials: string; error: string | null; crew: string | null }
@@ -17,17 +18,28 @@ const isDry = (d: StatusData) => d.status === "sent" && (d.error ?? "").startsWi
 const mayHaveSent = (err: string | null) => /clicked send/i.test(err ?? "");
 const NOTHING_SENT = /\s*Nothing was sent to the customer, so it's safe to tap Try again\.?\s*$/;
 
-/** Name, address, start date and total, at the top of every estimate screen. */
+/** Name, address, start date, total, progress and the one next step, at the top of every estimate screen. */
 export function StatusSummary({ data }: { data: StatusData }) {
   const c = data.estimate?.customer;
   const sub = [c?.job_address?.split(",")[0], data.estimate?.service_date && `starts ${fmtDay(data.estimate.service_date)}`].filter(Boolean).join(" · ");
+  const st = stage({ status: data.status, error: data.error, acceptedAt: data.acceptedAt ?? null, invoices: data.invoices ?? [], install: data.install?.status ?? null });
+  const showProgress = data.status === "sent";
   return (
-    <section className={`${card} flex items-center justify-between gap-3 p-[18px]`}>
-      <div className="flex min-w-0 flex-col gap-1">
-        <p className="truncate font-display text-xl font-bold">{c?.name ?? "Estimate"}</p>
-        {sub && <p className="text-[13px] text-muted">{sub}</p>}
+    <section className={`${heroCard} flex flex-col gap-4 p-5`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="truncate font-display text-[22px] font-bold leading-tight">{c?.name ?? "Estimate"}</p>
+          {sub && <p className="truncate text-[13px] text-white/65">{sub}</p>}
+        </div>
+        {data.computed?.totalCents != null && <p className="shrink-0 font-display text-[24px] font-bold tabular-nums">{money(data.computed.totalCents)}</p>}
       </div>
-      {data.computed?.totalCents != null && <p className="shrink-0 font-display text-[22px] font-bold tabular-nums">{money(data.computed.totalCents)}</p>}
+      {showProgress && <Progress steps={st.steps} done={st.done} dark labels tone={st.tone === "bad" ? "bad" : "good"} />}
+      {st.next && (
+        <div className="flex items-center gap-2.5 rounded-2xl bg-white/10 px-3.5 py-3">
+          <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${st.tone === "bad" ? "bg-[#FF8A7A]" : st.group === "paid" ? "bg-[#7FD1A3]" : "bg-[#F4BE2C]"}`} />
+          <p className="text-[14px] font-semibold"><span className="text-white/60">{st.group === "paid" ? "Done: " : "Next: "}</span>{st.next}</p>
+        </div>
+      )}
     </section>
   );
 }
