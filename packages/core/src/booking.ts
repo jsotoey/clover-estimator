@@ -14,6 +14,7 @@ export interface BookingSettings {
   service: string;            // bookable service in Clover, e.g. "Free Measure & Estimate"
   employee: string | null;    // Clover employee who does the visits, e.g. "Estimator"
   minutes: number;            // visit length
+  cloverMinutes: number | null; // the service's length as set in Clover, if longer. Clover won't save a visit that runs past the employee's hours
   bufferMinutes: number;      // blocked after each visit (drive time)
   noticeHours: number;        // earliest bookable = now + this
   maxDays: number;            // bookable dates: tomorrow .. tomorrow + maxDays - 1
@@ -34,6 +35,7 @@ export const DEFAULT_BOOKING: BookingSettings = {
   service: "Free Measure & Estimate",
   employee: null,
   minutes: 30,
+  cloverMinutes: null,
   bufferMinutes: 45,
   noticeHours: 24,
   maxDays: 14,
@@ -66,6 +68,7 @@ export function bookingSettings(raw: unknown): BookingSettings {
     service: typeof r.service === "string" && r.service.trim() ? r.service.trim() : DEFAULT_BOOKING.service,
     employee: typeof r.employee === "string" && r.employee.trim() ? r.employee.trim() : null,
     minutes: num(r.minutes, DEFAULT_BOOKING.minutes, 15, 240),
+    cloverMinutes: r.cloverMinutes == null ? null : num(r.cloverMinutes, 0, 5, 480) || null,
     bufferMinutes: num(r.bufferMinutes, DEFAULT_BOOKING.bufferMinutes, 0, 180),
     noticeHours: num(r.noticeHours, DEFAULT_BOOKING.noticeHours, 0, 24 * 14),
     maxDays: num(r.maxDays, DEFAULT_BOOKING.maxDays, 1, 60),
@@ -115,6 +118,12 @@ export function zonedClock(instant: number, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(instant));
 }
 
+function zonedHHMM(instant: number, timeZone: string): [number, number] {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", hour: "2-digit", minute: "2-digit" })
+    .formatToParts(new Date(instant)).map((x) => [x.type, x.value]));
+  return [+p.hour % 24, +p.minute];
+}
+
 function addDays(date: string, n: number): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
@@ -157,6 +166,21 @@ export interface DaySlots { date: string; weekday: Weekday; slots: Slot[] }
  * may run past it), it's at least noticeHours from now, and the visit plus its buffer doesn't overlap
  * any existing visit plus that visit's buffer.
  */
+/** How long a visit really holds the calendar: the longer of our visit length and Clover's service length. */
+export function visitLength(s: BookingSettings): number {
+  return Math.max(s.minutes, s.cloverMinutes ?? 0);
+}
+
+/** False when the start falls inside that day's hours but the visit would run past closing. Times outside the hours are the shop's call. */
+export function fitsHours(s: BookingSettings, start: number): boolean {
+  const date = zonedDate(start, s.timeZone);
+  const hours = s.hours[weekday(date)];
+  if (!hours) return true;
+  const [h, m] = zonedHHMM(start, s.timeZone);
+  const t = h * 60 + m;
+  return !(t >= toMin(hours[0]) && t < toMin(hours[1]) && t + visitLength(s) > toMin(hours[1]));
+}
+
 export function openSlots(s: BookingSettings, now: number, busy: Busy[]): DaySlots[] {
   const today = zonedDate(now, s.timeZone);
   const earliest = now + s.noticeHours * 3600_000;
@@ -169,10 +193,12 @@ export function openSlots(s: BookingSettings, now: number, busy: Busy[]): DaySlo
     const slots: Slot[] = [];
     if (hours) {
       const [open, close] = [toMin(hours[0]), toMin(hours[1])];
-      for (let m = open; m + s.minutes <= close; m += s.stepMinutes) {
+      const len = visitLength(s);
+      // Only offer starts whose whole visit ends by closing; Clover refuses the rest without saying why.
+      for (let m = open; m + len <= close; m += s.stepMinutes) {
         const start = zonedInstant(date, toHHMM(m), s.timeZone);
         if (start < earliest) continue;
-        const end = start + (s.minutes + s.bufferMinutes) * 60_000;
+        const end = start + (len + s.bufferMinutes) * 60_000;
         const clash = busy.some((b) => {
           const bEnd = b.start + (b.minutes + b.bufferMinutes) * 60_000;
           return start < bEnd && b.start < end;

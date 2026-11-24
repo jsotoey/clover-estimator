@@ -1,4 +1,4 @@
-import { bookingSettings, openSlots, zonedClock, zonedInstant } from "@ce/core";
+import { bookingSettings, fitsHours, openSlots, visitLength, zonedClock, zonedInstant } from "@ce/core";
 import { db } from "@/lib/db";
 import { busyTimes } from "@/lib/booking";
 import { getSession, unauthorized } from "@/lib/session";
@@ -43,6 +43,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       start = zonedInstant(body.date, body.time, settings.timeZone);
     if (Number.isNaN(start)) return Response.json({ error: "Pick a new day and time." }, { status: 400 });
     if (start < Date.now()) return Response.json({ error: "That time has already passed." }, { status: 400 });
+    if (!fitsHours(settings, start))
+      return Response.json({ error: `A ${visitLength(settings)}-minute visit then would run past the visit hours, and Clover won't save it. Pick an earlier time.` }, { status: 400 });
 
     const client = await db().connect();
     try {

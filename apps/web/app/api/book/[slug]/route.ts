@@ -1,4 +1,4 @@
-import { checkBookingRequest, customerConfirmation, isOpen, openSlots, shopNotice, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
+import { checkBookingRequest, customerConfirmation, isOpen, openSlots, visitLength, shopNotice, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
 import { sendEmail } from "@/lib/mail";
 import { db } from "@/lib/db";
 import { bookingStore, busyTimes } from "@/lib/booking";
@@ -73,7 +73,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
       `INSERT INTO bookings (merchant_id, starts_at, minutes, buffer_minutes, first_name, last_name, email, phone,
                              street, unit, city, zip, project_type, details, ip, text_consent)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
-      [store.id, b.start, store.settings.minutes, store.settings.bufferMinutes, b.firstName, b.lastName, b.email, b.phone,
+      [store.id, b.start, visitLength(store.settings), store.settings.bufferMinutes, b.firstName, b.lastName, b.email, b.phone,
        b.street, b.unit ?? null, b.city, b.zip, b.projectType, b.details, ip, str("consent") === "yes"]);
     const id = ins.rows[0].id;
     for (const f of photos)

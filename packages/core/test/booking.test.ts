@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingSettings, checkBookingRequest, isOpen, openSlots, visitNote, zonedInstant, zonedClock } from "../src/booking";
+import { bookingSettings, checkBookingRequest, fitsHours, isOpen, openSlots, visitNote, zonedInstant, zonedClock } from "../src/booking";
 
 const leal = bookingSettings({
   enabled: true, service: "Free Measure & Estimate", employee: "Estimator",
@@ -48,6 +48,24 @@ describe("open slots", () => {
     expect(isOpen(leal, now, [], start)).toBe(true);
     expect(isOpen(leal, now, [{ start: Date.parse(start), minutes: 30, bufferMinutes: 45 }], start)).toBe(false);
     expect(isOpen(leal, now, [], "2026-11-25T15:07:00.000Z")).toBe(false);
+  });
+});
+
+describe("Clover service longer than our visit", () => {
+  const long = bookingSettings({ ...leal, cloverMinutes: 75 });
+  it("stops offering starts that would run past noon in Clover", () => {
+    const tue = openSlots(long, now, []).find((d) => d.date === "2026-12-01")!;
+    expect(tue.slots.at(-1)!.label).toBe("10:45 AM");
+    expect(openSlots(leal, now, []).find((d) => d.date === "2026-12-01")!.slots.at(-1)!.label).toBe("11:30 AM");
+  });
+  it("reschedule guard: 11:30 fails with a 75-minute service, fine at 30", () => {
+    const t = zonedInstant("2026-12-01", "11:30", "America/New_York");
+    expect(fitsHours(long, t)).toBe(false);
+    expect(fitsHours(leal, t)).toBe(true);
+    expect(fitsHours(long, zonedInstant("2026-12-01", "14:00", "America/New_York"))).toBe(true);
+  });
+  it("ignores a junk value", () => {
+    expect(bookingSettings({ ...leal, cloverMinutes: "x" }).cloverMinutes).toBe(null);
   });
 });
 
