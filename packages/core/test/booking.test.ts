@@ -64,6 +64,12 @@ describe("Clover service longer than our visit", () => {
     expect(fitsHours(leal, t)).toBe(true);
     expect(fitsHours(long, zonedInstant("2026-12-01", "14:00", "America/New_York"))).toBe(true);
   });
+  it("an older visit saved as 30 minutes still blocks Clover's 75", () => {
+    const nine = zonedInstant("2026-12-01", "09:00", "America/New_York");
+    const tue = openSlots(long, now, [{ start: nine, minutes: 30, bufferMinutes: 45 }]).find((d) => d.date === "2026-12-01")!;
+    expect(tue.slots.map((x) => x.label)).not.toContain("10:30 AM"); // 9:00 + 75 + 45 = 11:00
+    expect(tue.slots.map((x) => x.label)).toEqual([]);
+  });
   it("ignores a junk value", () => {
     expect(bookingSettings({ ...leal, cloverMinutes: "x" }).cloverMinutes).toBe(null);
   });

@@ -200,7 +200,8 @@ export function openSlots(s: BookingSettings, now: number, busy: Busy[]): DaySlo
         if (start < earliest) continue;
         const end = start + (len + s.bufferMinutes) * 60_000;
         const clash = busy.some((b) => {
-          const bEnd = b.start + (b.minutes + b.bufferMinutes) * 60_000;
+          // Every visit is the same Clover service, so an older visit saved with a shorter length still holds `len` there.
+          const bEnd = b.start + (Math.max(b.minutes, len) + b.bufferMinutes) * 60_000;
           return start < bEnd && b.start < end;
         });
         if (!clash) slots.push({ start: new Date(start).toISOString(), label: zonedClock(start, s.timeZone) });
