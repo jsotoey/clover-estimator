@@ -50,6 +50,18 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
     return () => clearInterval(t);
   }, []);
 
+  // Any button on the status card (Mark paid, Undo, Mark accepted…) asks for a fresh copy right away,
+  // so the bottom buttons never act on a stale screen.
+  useEffect(() => {
+    if (!estimateId) return;
+    const refresh = async () => {
+      const r = await fetch(`/api/estimates/${estimateId}`, { cache: "no-store" });
+      if (r.ok) setStatus(await r.json());
+    };
+    window.addEventListener("estimate-changed", refresh);
+    return () => window.removeEventListener("estimate-changed", refresh);
+  }, [estimateId]);
+
   // Follow the worker after approval; after sending, keep an eye on acceptance and invoices (slower).
   useEffect(() => {
     if (!estimateId || !status) return;

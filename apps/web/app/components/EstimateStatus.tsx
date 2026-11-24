@@ -51,6 +51,28 @@ function Step({ state, title, sub, children }: { state: "done" | "now" | "todo" 
   );
 }
 
+const changed = () => window.dispatchEvent(new Event("estimate-changed"));
+
+/** Undo a "paid" tap made by mistake (only for payments marked in the app, not ones Clover saw paid). */
+function UndoPaid({ id, inv }: { id: string; inv: InvoiceInfo }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function go() {
+    if (!confirm(`Undo "paid" on the ${money(inv.totalCents)} ${inv.kind}?${inv.kind === "deposit" ? " A planned install that isn't on the Clover calendar yet is taken off too." : ""}`)) return;
+    setBusy(true); setErr("");
+    const r = await fetch(`/api/estimates/${id}/invoices`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: inv.kind, action: "undo_paid" }) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok) setErr(j.error ?? "That didn't work."); else changed();
+  }
+  return (
+    <>
+      <button onClick={go} disabled={busy} className="mt-1 self-start text-sm font-semibold text-brand underline">{busy ? "Undoing…" : "Undo"}</button>
+      {err && <p className="text-sm text-bad">{err}</p>}
+    </>
+  );
+}
+
 /** "Check now": the bot looks at Clover within seconds instead of on its next round. */
 function CheckNow({ id }: { id: string }) {
   const [state, setState] = useState<"" | "asked">("");
@@ -75,6 +97,7 @@ function MarkPaid({ id, inv }: { id: string; inv: InvoiceInfo }) {
     const r = await fetch(`/api/estimates/${id}/invoices`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: inv.kind, action: "in_person" }) });
     const j = await r.json().catch(() => ({}));
     setState(r.ok ? "done" : j.error ?? "That didn't work. Try again.");
+    if (r.ok) changed();
   }
   if (state === "done") return <p className="mt-1 text-sm font-semibold text-brand">Marked paid.</p>;
   return (
@@ -95,7 +118,7 @@ function invoiceStep(id: string, inv: InvoiceInfo, accepted: boolean, name: stri
   const link = sms && <a href={sms} className="mt-1 text-sm font-semibold text-brand underline">Text the pay link</a>;
   switch (inv.status) {
     case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}<CheckNow id={id} /><MarkPaid id={id} inv={inv} /></Step>;
-    case "paid_in_person": return <Step key={inv.kind} state="done" title={`${label} · paid in person`} />;
+    case "paid_in_person": return <Step key={inv.kind} state="done" title={`${label} · paid in person`}><UndoPaid id={id} inv={inv} /></Step>;
     case "paid": return <Step key={inv.kind} state="done" title={`${label} · paid`} sub={inv.paidAt ? `Clover shows it paid · ${fmtWhen(inv.paidAt)}` : "Clover shows it paid"} />;
     case "approved": case "sending": return <Step key={inv.kind} state="now" title={label} sub="Putting the invoice into Clover…" />;
     case "failed": return <Step key={inv.kind} state="bad" title={`${label} · didn't go through`} sub={inv.error ?? "Clover didn't take it. Nothing was sent. Tap Try again below."}><MarkPaid id={id} inv={inv} /></Step>;
@@ -294,6 +317,7 @@ export function StatusActions({ id, data, onRetry }: { id: string; data: StatusD
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     setMsg(r.ok ? "Marked as accepted. You can send the deposit now." : j.error ?? "That didn't work. Try again.");
+    if (r.ok) changed();
   }
   async function act(action: "send" | "in_person") {
     if (!inv) return;
@@ -303,6 +327,7 @@ export function StatusActions({ id, data, onRetry }: { id: string; data: StatusD
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     setMsg(r.ok ? (action === "send" ? "On its way…" : "Marked paid.") : j.error ?? "That didn't work. Try again.");
+    if (r.ok) changed();
   }
   const sendLabel = inv.status === "failed" ? "Try again" : inv.kind === "deposit" ? "Send deposit" : "Send balance";
   // Money moves only after the customer says yes: in Clover's email, or marked here by the shop.
