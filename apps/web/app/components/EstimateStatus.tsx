@@ -51,6 +51,19 @@ function Step({ state, title, sub, children }: { state: "done" | "now" | "todo" 
   );
 }
 
+/** "Check now": the bot looks at Clover within seconds instead of on its next round. */
+function CheckNow({ id }: { id: string }) {
+  const [state, setState] = useState<"" | "asked">("");
+  async function go() {
+    setState("asked");
+    await fetch(`/api/estimates/${id}/check`, { method: "POST" }).catch(() => {});
+    setTimeout(() => setState(""), 30_000);
+  }
+  return state === "asked"
+    ? <p className="mt-1 text-sm text-muted">Checking Clover now…</p>
+    : <button onClick={go} className="mt-1 self-start text-sm font-semibold text-brand underline">Check now</button>;
+}
+
 /** "Mark paid" on one invoice: deposit or balance, whether or not the invoice was emailed. */
 function MarkPaid({ id, inv }: { id: string; inv: InvoiceInfo }) {
   const [state, setState] = useState<"" | "busy" | "done" | string>("");
@@ -81,7 +94,7 @@ function invoiceStep(id: string, inv: InvoiceInfo, accepted: boolean, name: stri
     : null;
   const link = sms && <a href={sms} className="mt-1 text-sm font-semibold text-brand underline">Text the pay link</a>;
   switch (inv.status) {
-    case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}<MarkPaid id={id} inv={inv} /></Step>;
+    case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}<CheckNow id={id} /><MarkPaid id={id} inv={inv} /></Step>;
     case "paid_in_person": return <Step key={inv.kind} state="done" title={`${label} · paid in person`} />;
     case "paid": return <Step key={inv.kind} state="done" title={`${label} · paid`} sub={inv.paidAt ? `Clover shows it paid · ${fmtWhen(inv.paidAt)}` : "Clover shows it paid"} />;
     case "approved": case "sending": return <Step key={inv.kind} state="now" title={label} sub="Putting the invoice into Clover…" />;
@@ -246,7 +259,7 @@ export function StatusBody({ id, data }: { id: string; data: StatusData }) {
         </Step>
         {data.acceptedAt
           ? <Step state="done" title="Customer accepted" sub={fmtWhen(data.acceptedAt)} />
-          : <Step state="now" title="Waiting for the customer to accept" sub="Checked every few minutes" />}
+          : <Step state="now" title="Waiting for the customer to accept" sub="Checked about every minute right after sending"><CheckNow id={id} /></Step>}
         {invoices.map((inv) => (
           <div key={inv.kind}>
             {invoiceStep(id, inv, !!data.acceptedAt, c?.name, c?.phone)}

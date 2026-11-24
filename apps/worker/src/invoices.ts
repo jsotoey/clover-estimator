@@ -114,8 +114,23 @@ let lastCheck = 0;
  * Every few minutes, per store: has the customer accepted an estimate we sent, and has an invoice we
  * sent been paid? A paid deposit pencils in the install (for stores that book installs).
  */
+let lastPeek = 0;
+let hurry = false;
 export async function checkAcceptances(): Promise<boolean> {
-  if (Date.now() - lastCheck < config.acceptCheckMs) return false;
+  // Normally every few minutes. Faster (45s) for an hour after an estimate or invoice goes out, and right
+  // away when someone taps "Check now" in the app. The cheap database peek runs at most every 10 seconds.
+  if (Date.now() - lastPeek > 10_000) {
+    lastPeek = Date.now();
+    const { rows } = await db().query<{ now: boolean; recent: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM events WHERE type = 'check_now' AND created_at > to_timestamp($1 / 1000.0)) AS now,
+              EXISTS (SELECT 1 FROM estimates WHERE status = 'sent' AND accepted_at IS NULL AND sent_at > now() - interval '60 minutes')
+                OR EXISTS (SELECT 1 FROM invoices WHERE status = 'sent' AND sent_at > now() - interval '60 minutes') AS recent`,
+      [lastCheck]).catch(() => ({ rows: [{ now: false, recent: false }] }));
+    hurry = rows[0].now;
+    if (rows[0].recent && Date.now() - lastCheck >= 45_000) hurry = true;
+  }
+  if (!hurry && Date.now() - lastCheck < config.acceptCheckMs) return false;
+  hurry = false;
   lastCheck = Date.now();
   const est = (await db().query<{ id: string; num: string; merchant_id: number }>(
     `SELECT id, clover_estimate_number AS num, merchant_id FROM estimates
