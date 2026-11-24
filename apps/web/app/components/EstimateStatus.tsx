@@ -92,7 +92,7 @@ function invoiceStep(id: string, inv: InvoiceInfo, accepted: boolean, name: stri
   }
 }
 
-function InstallStep({ id, i }: { id: string; i: InstallInfo }) {
+function InstallStep({ id, i, agreed }: { id: string; i: InstallInfo; agreed?: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [moving, setMoving] = useState(false);
@@ -146,7 +146,10 @@ function InstallStep({ id, i }: { id: string; i: InstallInfo }) {
         </Step>
       );
     default:
-      return <Step state="now" title={`Install planned · ${when}`} sub="Earliest date after the materials wait. Booking it in Clover…" />;
+      return <Step state="now" title={`Install planned · ${when}`} sub={`${
+        agreed && agreed === i.date ? "The start date on the estimate."
+        : agreed && agreed < i.date ? `Moved from ${fmtDay(agreed)}: materials can't be in by then.`
+        : "Earliest date the materials allow."} Booking it in Clover…`} />;
   }
 }
 
@@ -247,7 +250,7 @@ export function StatusBody({ id, data }: { id: string; data: StatusData }) {
         {invoices.map((inv) => (
           <div key={inv.kind}>
             {invoiceStep(id, inv, !!data.acceptedAt, c?.name, c?.phone)}
-            {inv.kind === "deposit" && data.install && <InstallStep id={id} i={data.install} />}
+            {inv.kind === "deposit" && data.install && <InstallStep id={id} i={data.install} agreed={data.estimate?.service_date} />}
           </div>
         ))}
         {invoices.length > 0 && invoices.every((i) => i.status === "paid_in_person" || i.status === "paid") && <Step state="done" title="All paid" />}

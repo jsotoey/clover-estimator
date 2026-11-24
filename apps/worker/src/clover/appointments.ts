@@ -116,6 +116,19 @@ async function chooseEmployee(page: Page, employee: string) {
   await btn.click();
   if (!(await pickOption(page, employee)))
     throw new FillError(`No employee named "${employee}" in this Clover. Add the crew in Employees (named exactly like in the app's store settings). Nothing was booked.`);
+  // Clover can pop up a box here, e.g. when this employee isn't set up for the chosen service.
+  const box = page.locator("dialog[open], [role='dialog']").filter({ hasText: /\S/ }).last();
+  if (await box.waitFor({ state: "visible", timeout: 1500 }).then(() => true).catch(() => false)) {
+    const text = (await box.innerText({ timeout: 2000 }).catch(() => "")).replace(/\s+/g, " ").trim();
+    await capture(page, "appointment-employee-popup", { aria: true }).catch(() => "");
+    // A plain "go ahead" is fine to accept; anything else, stop and say what Clover asked.
+    const ok = box.getByRole("button", { name: /^(continue|book anyway|yes|ok|assign)/i }).first();
+    if (await ok.isVisible().catch(() => false)) await ok.click({ timeout: 4000 });
+    else {
+      await box.getByRole("button", { name: /close|cancel/i }).first().click({ timeout: 2000 }).catch(() => page.keyboard.press("Escape"));
+      throw new FillError(`Clover stopped at the crew: "${text.slice(0, 160)}". In Clover, open Employees > ${employee} > Edit booking and add the service. Nothing was booked.`);
+    }
+  }
 }
 
 async function enabled(loc: Locator, ms = 6000): Promise<boolean> {
