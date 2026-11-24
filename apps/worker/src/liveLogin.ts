@@ -2,6 +2,7 @@ import { chromium, type Page } from "playwright";
 import { db, logEvent } from "./db";
 import { config } from "./config";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import { closeContext, clearProfileLock, quietChromePrompts, forgetSavedSession, writeSavedSession, newPage, saveSession, VIEWPORT, workerProfileDir } from "./browser";
 import { checkSession, prefillCredentials } from "./clover/session";
 
@@ -141,6 +142,14 @@ export async function runLiveLogin(id: number): Promise<boolean> {
   let remembered = false;
   let page: Page | null = null;
   try {
+    const { rows: why } = await db().query<{ reason: string | null }>(`SELECT reason FROM clover_login WHERE id = $1`, [id]);
+    if (why[0]?.reason === "switch") {
+      // Switching Clover logins: forget this store's session completely, so Clover asks who to sign in as.
+      await closeContext();
+      forgetSavedSession();
+      fs.rmSync(workerProfileDir(), { recursive: true, force: true });
+      await logEvent(null, "login_switch", { loginId: id });
+    }
     page = await newPage();
     clip = FULL;
     if (await checkSession(page)) {

@@ -66,9 +66,10 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
     return () => clearInterval(t);
   }, [live, current?.status, load]);
 
-  async function start() {
+  async function start(switching = false) {
+    if (switching && !confirm("Sign the bot out of Clover and sign in with a different login (for example the store's bot login)?")) return;
     setBusy(true);
-    await fetch("/api/clover-login", { method: "POST" });
+    await fetch("/api/clover-login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ switch: switching }) });
     await load();
     setBusy(false);
   }
@@ -156,7 +157,8 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
               <p className="text-[13px] text-muted">{(signins[0] ?? lastDone)?.finished_at ? `Signed in ${fmt((signins[0] ?? lastDone)!.finished_at!)}` : "Ready for estimates"}</p>
             </div>
           </div>
-          <button onClick={start} disabled={busy} className={btnSecondary}>{busy ? "Starting…" : "Sign in again"}</button>
+          <button onClick={() => start()} disabled={busy} className={btnSecondary}>{busy ? "Starting…" : "Sign in again"}</button>
+          <button onClick={() => start(true)} disabled={busy} className="text-center text-sm font-semibold text-brand underline">Use a different Clover login</button>
         </section>
       )}
 
@@ -173,7 +175,7 @@ export default function CloverConnect({ businessName, admin }: { businessName: s
           </div>
           {current?.status === "failed" && current.message && <p className="rounded-xl bg-bad-soft px-3 py-2.5 text-[13px] text-bad">Last try didn&apos;t finish: {current.message}</p>}
           {steps}
-          <button onClick={start} disabled={busy} className={btnPrimary}>{busy ? "Opening…" : "Start sign-in"}</button>
+          <button onClick={() => start()} disabled={busy} className={btnPrimary}>{busy ? "Opening…" : "Start sign-in"}</button>
         </section>
       )}
 

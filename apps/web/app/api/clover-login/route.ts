@@ -22,12 +22,14 @@ export async function GET() {
 }
 
 /** Start a sign-in (reuses one already open). */
-export async function POST() {
+/** Start a Clover sign-in. { switch: true } makes the bot forget its current Clover login first (e.g. moving to a bot login). */
+export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return unauthorized();
+  const reason = ((await req.json().catch(() => ({}))) as { switch?: boolean }).switch ? "switch" : "manual";
   const open = await db().query<{ id: number }>(`SELECT id FROM clover_login WHERE status IN ('requested','active') AND merchant_id = $1 ORDER BY id DESC LIMIT 1`, [s.merchant.id]);
   if (open.rows[0]) return Response.json({ id: open.rows[0].id });
-  const { rows } = await db().query<{ id: number }>(`INSERT INTO clover_login (status, reason, merchant_id) VALUES ('requested', 'manual', $1) RETURNING id`, [s.merchant.id]);
-  await db().query(`INSERT INTO events (type, detail) VALUES ('login_needed', $1)`, [JSON.stringify({ loginId: rows[0].id, reason: "manual" })]);
+  const { rows } = await db().query<{ id: number }>(`INSERT INTO clover_login (status, reason, merchant_id) VALUES ('requested', $2, $1) RETURNING id`, [s.merchant.id, reason]);
+  await db().query(`INSERT INTO events (type, detail) VALUES ('login_needed', $1)`, [JSON.stringify({ loginId: rows[0].id, reason })]);
   return Response.json({ id: rows[0].id });
 }
