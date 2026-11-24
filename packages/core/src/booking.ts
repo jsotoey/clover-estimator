@@ -25,6 +25,8 @@ export interface BookingSettings {
   notifyEmail: string | null; // the shop gets a "new booking" email here; also the customer's reply-to
   accent: string | null;      // the shop's brand color for the booking page, e.g. "#12648f"
   tagline: string | null;     // one line under the shop name, e.g. "Where Precision Meets Transparency"
+  closedDates: string[];      // extra days off, "YYYY-MM-DD" (vacations, inventory day)
+  holidays: boolean;          // skip the major US holidays (default on)
 }
 
 export const DEFAULT_BOOKING: BookingSettings = {
@@ -43,6 +45,8 @@ export const DEFAULT_BOOKING: BookingSettings = {
   notifyEmail: null,
   accent: null,
   tagline: null,
+  closedDates: [],
+  holidays: true,
 };
 
 /** Merge a store's saved JSON over the defaults, clamping numbers to sane ranges. */
@@ -74,6 +78,8 @@ export function bookingSettings(raw: unknown): BookingSettings {
     notifyEmail: typeof r.notifyEmail === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.notifyEmail.trim()) ? r.notifyEmail.trim() : null,
     accent: typeof r.accent === "string" && /^#[0-9a-f]{6}$/i.test(r.accent) ? r.accent : null,
     tagline: typeof r.tagline === "string" && r.tagline.trim() ? r.tagline.trim().slice(0, 80) : null,
+    closedDates: Array.isArray(r.closedDates) ? r.closedDates.filter((d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 200) : [],
+    holidays: r.holidays !== false,
   };
 }
 
@@ -122,6 +128,25 @@ const toHHMM = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")
 
 // --- slots ----------------------------------------------------------------------------------------
 
+/**
+ * Major US holidays a home-service shop is normally closed: New Year's Day, Memorial Day, July 4th,
+ * Labor Day, Thanksgiving and the day after, Christmas Eve and Christmas Day.
+ */
+export function usHoliday(ymd: string): string | null {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const nth = Math.ceil(d / 7);
+  const lastOfMonth = d + 7 > new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (m === 1 && d === 1) return "New Year's Day";
+  if (m === 5 && dow === 1 && lastOfMonth) return "Memorial Day";
+  if (m === 7 && d === 4) return "Independence Day";
+  if (m === 9 && dow === 1 && nth === 1) return "Labor Day";
+  if (m === 11 && dow === 4 && nth === 4) return "Thanksgiving";
+  if (m === 11 && dow === 5 && d >= 23 && d <= 29) return "Day after Thanksgiving";
+  if (m === 12 && (d === 24 || d === 25)) return d === 24 ? "Christmas Eve" : "Christmas";
+  return null;
+}
+
 export interface Busy { start: number; minutes: number; bufferMinutes: number } // existing visit (UTC ms)
 export interface Slot { start: string; label: string }                          // ISO instant + "9:15 AM"
 export interface DaySlots { date: string; weekday: Weekday; slots: Slot[] }
@@ -139,7 +164,8 @@ export function openSlots(s: BookingSettings, now: number, busy: Busy[]): DaySlo
   for (let i = 1; i <= s.maxDays; i++) {
     const date = addDays(today, i);
     const wd = weekday(date);
-    const hours = s.hours[wd];
+    const closed = s.closedDates.includes(date) || (s.holidays && usHoliday(date) !== null);
+    const hours = closed ? undefined : s.hours[wd];
     const slots: Slot[] = [];
     if (hours) {
       const [open, close] = [toMin(hours[0]), toMin(hours[1])];

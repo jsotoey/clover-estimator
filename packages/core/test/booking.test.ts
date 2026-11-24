@@ -75,3 +75,26 @@ describe("booking request", () => {
     expect(n.length).toBeLessThanOrEqual(200);
   });
 });
+
+import { usHoliday, openSlots as slotsFor, bookingSettings as settingsFor } from "../src/booking";
+describe("holidays and closed days", () => {
+  it("knows the 2026 holidays", () => {
+    expect(usHoliday("2026-11-26")).toBe("Thanksgiving");
+    expect(usHoliday("2026-11-27")).toBe("Day after Thanksgiving");
+    expect(usHoliday("2026-05-25")).toBe("Memorial Day");
+    expect(usHoliday("2026-09-07")).toBe("Labor Day");
+    expect(usHoliday("2026-12-25")).toBe("Christmas");
+    expect(usHoliday("2026-11-25")).toBeNull();
+    expect(usHoliday("2026-11-20")).toBeNull();
+  });
+  it("no slots on Thanksgiving or a closed day; holidays can be turned off", () => {
+    const now = Date.parse("2026-11-23T17:00:00Z");
+    const on = settingsFor({ enabled: true, closedDates: ["2026-12-02"] });
+    const days = slotsFor(on, now, []);
+    expect(days.find((d) => d.date === "2026-11-26")!.slots).toHaveLength(0);
+    expect(days.find((d) => d.date === "2026-12-02")!.slots).toHaveLength(0);
+    expect(days.find((d) => d.date === "2026-12-01")!.slots.length).toBeGreaterThan(0);
+    const off = settingsFor({ enabled: true, holidays: false });
+    expect(slotsFor(off, now, []).find((d) => d.date === "2026-11-26")!.slots.length).toBeGreaterThan(0);
+  });
+});
