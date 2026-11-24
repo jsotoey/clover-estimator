@@ -402,7 +402,7 @@ async function addCustomItem(page: Page, name: string, priceCents: number, taxab
   const panel = page.getByRole("dialog").filter({ hasText: /custom item/i }).first();
   const scope = (await panel.isVisible().catch(() => false)) ? panel : page.locator("body");
 
-  await (await must([scope.getByLabel(/item name/i), scope.getByPlaceholder(/item name/i)], "the item name field")).fill(name.slice(0, 80));
+  await (await must([scope.getByLabel(/item( or service)? name/i), scope.getByPlaceholder(/item( or service)? name/i)], "the item name field")).fill(name.slice(0, 80));
   const price = await must([scope.getByLabel(/^price$/i), scope.getByLabel(/price/i)], "the price field");
   await price.fill("");
   await price.type((priceCents / 100).toFixed(2));
