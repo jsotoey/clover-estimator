@@ -72,7 +72,12 @@ export async function firstVisible(cands: Locator[], timeout = T.short): Promise
 
 export async function must(cands: Locator[], what: string, timeout = T.short): Promise<Locator> {
   const l = await firstVisible(cands, timeout);
-  if (!l) throw new FillError(`Could not find ${what} on the Clover page`);
+  if (!l) {
+    // Keep a picture + page outline of what Clover showed, so the fix comes from evidence, not guesses.
+    const slug = what.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 40);
+    await capture(cands[0].page(), `missing-${slug}`, { aria: true }).catch(() => "");
+    throw new FillError(`Could not find ${what} on the Clover page`);
+  }
   return l;
 }
 
