@@ -7,12 +7,14 @@ export type StageInput = {
   error: string | null;
   acceptedAt: string | null;
   invoices: { kind: string; status: string }[];
-  install: string | null; // installs.status, or null when no install yet
+  install: string | null; // installs.status (to_book, booking, tentative, to_confirm, confirmed, done, failed…), or null
 };
 export type Tone = "good" | "warn" | "bad" | "plain";
 export type Group = "needs" | "waiting" | "paid" | "other";
 
 export const isPaid = (s: string) => s === "paid" || s === "paid_in_person";
+/** Install statuses that mean it's on the calendar (penciled in, confirmed, or done). */
+export const installSet = (s: string | null) => !!s && ["tentative", "to_confirm", "confirmed", "done"].includes(s);
 
 export function stage(x: StageInput): {
   steps: string[]; done: number; tone: Tone; tag: string; next: string; group: Group;
@@ -46,7 +48,7 @@ export function stage(x: StageInput): {
       if (dep && ["approved", "sending", "waiting"].includes(dep.status)) return r(2, "warn", "Working", "Deposit invoice going out", "waiting");
       return r(2, "good", "Accepted", "Send the deposit invoice", "needs");
     }
-    if (x.install !== "booked") {
+    if (!installSet(x.install)) {
       if (x.install && ["to_book", "booking", "to_reschedule"].includes(x.install)) return r(3, "warn", "Deposit paid", "Booking the install in Clover", "waiting");
       return r(3, "good", "Deposit paid", "Install next", "waiting");
     }

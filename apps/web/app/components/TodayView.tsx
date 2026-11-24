@@ -72,8 +72,10 @@ export default function TodayView({ businessName, admin }: { businessName: strin
   const waitingAccept = rows.filter((x) => x.d.group === "waiting" && !x.r.accepted_at).length;
   const owed = rows.filter((x) => x.r.accepted_at && x.d.group !== "paid").reduce((s, x) => s + (x.r.total_cents ?? 0), 0);
   const todayCount = items.filter((x) => x.day === today).length;
-  const next = items[0];
-  const later = items.slice(1, 6);
+  // Failed visits sit under Needs you; Next up is only work that's really on the calendar.
+  const onCal = items.filter((x) => !x.problem);
+  const next = onCal[0];
+  const later = onCal.slice(1, 6);
   const failedVisits = (visits ?? []).filter((x) => x.status === "failed" && Date.parse(x.starts_at) >= now);
 
   const hour = Number(new Date().toLocaleString("en-US", { timeZone: TZ, hour: "numeric", hour12: false }));

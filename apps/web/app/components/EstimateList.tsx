@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Avatar, Progress, money, card } from "./ui";
-import { initials, stage, type Group, type Tone } from "@/lib/stage";
+import { initials, installSet, stage, type Group, type Tone } from "@/lib/stage";
 
 export type RecentItem = {
   id: string; status: string; error: string | null; number: string | null; accepted_at: string | null; updated_at: string;
@@ -13,7 +13,7 @@ export type RecentItem = {
 export function describe(r: RecentItem): { tone: Tone; tag: string; sub: string; group: Group; steps: string[]; done: number } {
   const s = stage({ status: r.status, error: r.error, acceptedAt: r.accepted_at, invoices: r.invoices ?? [], install: r.install ?? null });
   let sub = s.next;
-  if (r.install === "booked" && r.install_date && s.group !== "paid")
+  if (installSet(r.install ?? null) && r.install_date && s.group !== "paid")
     sub = `${s.next} · install ${new Date(`${r.install_date}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
   return { tone: s.tone, tag: s.tag, sub, group: s.group, steps: s.steps, done: s.done };
 }

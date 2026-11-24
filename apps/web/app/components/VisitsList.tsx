@@ -16,6 +16,11 @@ const STATUS: Record<string, [Tone, string]> = {
   to_book: ["warn", "Waiting to add to Clover"], booking: ["warn", "Adding to Clover"], booked: ["good", "On Clover calendar"],
   test_run: ["warn", "Not added (test)"], failed: ["bad", "Not in Clover"], cancelled: ["plain", "Cancelled"],
 };
+const INSTALL: Record<string, [string, string]> = {
+  tentative: ["Penciled in", "bg-[#E4ECF7] text-[#2B5FA8]"], to_confirm: ["Planned", "bg-[#E4ECF7] text-[#2B5FA8]"],
+  confirmed: ["Confirmed", "bg-[#E4ECF7] text-[#2B5FA8]"], done: ["Done", "bg-[#ECEAE3] text-muted"],
+  failed: ["Not in Clover", "bg-bad-soft text-bad"], to_reschedule: ["Moving", "bg-warn-soft text-warn"],
+};
 const fmt = (iso: string, o: Intl.DateTimeFormatOptions) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, ...o });
 const when = (iso: string) => fmt(iso, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const clock = (iso: string) => fmt(iso, { hour: "numeric", minute: "2-digit" });
@@ -145,8 +150,8 @@ export default function VisitsList({ businessName }: { businessName: string }) {
           <p className="truncate font-semibold">{i.customer ?? "Customer"} · Install</p>
           <p className="truncate text-sm text-muted">{[i.crew, i.address?.split(",")[0]].filter(Boolean).join(" · ")}</p>
         </div>
-        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-bold ${i.status === "booked" ? "bg-[#E4ECF7] text-[#2B5FA8]" : i.status === "failed" ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn"}`}>
-          {i.status === "booked" ? "On Clover calendar" : i.status === "failed" ? "Not in Clover" : "Adding to Clover"}
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-bold ${INSTALL[i.status]?.[1] ?? "bg-warn-soft text-warn"}`}>
+          {INSTALL[i.status]?.[0] ?? "Adding to Clover"}
         </span>
       </a>
     </li>
@@ -189,7 +194,8 @@ export default function VisitsList({ businessName }: { businessName: string }) {
         </div>
         <div className="grid grid-cols-7 gap-1">
           {cells.map((k) => {
-            const n = byDay.get(k)?.length ?? 0;
+            const dv = byDay.get(k) ?? [];
+            const n = dv.length;
             const ni = installsByDay.get(k)?.length ?? 0;
             const inMonth = k.slice(0, 7) === m;
             const sel = k === focus;
@@ -199,7 +205,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
                 className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-2xl text-[15px] transition ${inMonth ? "" : "text-muted/40"} ${sel ? "bg-ink font-semibold text-white" : k === today ? "font-bold text-brand" : ""}`}>
                 {Number(k.slice(8))}
                 <span className="flex h-1.5 gap-0.5">
-                  {Array.from({ length: Math.min(n, 3) }, (_, i) => <span key={`v${i}`} className={`h-1.5 w-1.5 rounded-full ${sel ? "bg-[#7FD1A3]" : "bg-brand"}`} />)}
+                  {dv.slice(0, 3).map((v) => <span key={v.id} className={`h-1.5 w-1.5 rounded-full ${v.status === "failed" ? "bg-bad" : sel ? "bg-[#7FD1A3]" : "bg-brand"}`} />)}
                   {Array.from({ length: Math.min(ni, 2) }, (_, i) => <span key={`i${i}`} className={`h-1.5 w-1.5 rounded-full ${sel ? "bg-[#9DBBE6]" : "bg-[#2B5FA8]"}`} />)}
                 </span>
               </button>

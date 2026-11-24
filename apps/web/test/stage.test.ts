@@ -13,10 +13,10 @@ describe("estimate stage", () => {
   it("deposit paid, install being booked, then booked (no stale 'Install next')", () => {
     const paid = { ...base, acceptedAt: "x", invoices: [{ kind: "deposit", status: "paid_in_person" }] };
     expect(stage({ ...paid, install: "to_book" }).next).toBe("Booking the install in Clover");
-    expect(stage({ ...paid, install: "booked" })).toMatchObject({ done: 4, next: "Send the balance after the install" });
+    expect(stage({ ...paid, install: "tentative" })).toMatchObject({ done: 4, next: "Send the balance after the install" });
   });
   it("paid in full fills the bar", () => {
-    const s = stage({ ...base, acceptedAt: "x", install: "booked", invoices: [{ kind: "deposit", status: "paid" }, { kind: "balance", status: "paid_in_person" }] });
+    const s = stage({ ...base, acceptedAt: "x", install: "confirmed", invoices: [{ kind: "deposit", status: "paid" }, { kind: "balance", status: "paid_in_person" }] });
     expect(s).toMatchObject({ done: 5, group: "paid" });
   });
   it("failures need you", () => {
