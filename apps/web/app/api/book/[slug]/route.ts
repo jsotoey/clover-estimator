@@ -1,4 +1,4 @@
-import { checkBookingRequest, customerConfirmation, isOpen, openSlots, visitLength, shopNotice, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
+import { checkBookingRequest, customerConfirmation, fitsHours, isOpen, openSlots, visitLength, shopNotice, zonedClock, zonedDate, type BookingRequest } from "@ce/core";
 import { sendEmail } from "@/lib/mail";
 import { db } from "@/lib/db";
 import { bookingStore, busyTimes } from "@/lib/booking";
@@ -40,6 +40,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
   const problems = checkBookingRequest(b);
   if (!store.settings.projectTypes.includes(b.projectType)) problems.push("Pick what the project is.");
   if (problems.length) return Response.json({ error: problems[0], problems }, { status: 400 });
+  if (!fitsHours(store.settings, Date.parse(b.start)))
+    return Response.json({ error: "That time runs past our visit hours. Please pick an earlier time." }, { status: 400 });
 
   const photos = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0).slice(0, MAX_PHOTOS);
   for (const f of photos) {
