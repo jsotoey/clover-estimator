@@ -51,20 +51,43 @@ function Step({ state, title, sub, children }: { state: "done" | "now" | "todo" 
   );
 }
 
-function invoiceStep(inv: InvoiceInfo, accepted: boolean, name: string | undefined, phone: string | undefined) {
+/** "Mark paid" on one invoice: deposit or balance, whether or not the invoice was emailed. */
+function MarkPaid({ id, inv }: { id: string; inv: InvoiceInfo }) {
+  const [state, setState] = useState<"" | "busy" | "done" | string>("");
+  const what = inv.kind === "deposit" ? "deposit" : "balance";
+  async function go() {
+    const extra = inv.status === "sent" ? " The emailed invoice stays open in Clover: mark it paid there too so the customer isn't reminded." : "";
+    if (!confirm(`Mark the ${money(inv.totalCents)} ${what} as paid (cash, check or card on the Clover device)?${extra}`)) return;
+    setState("busy");
+    const r = await fetch(`/api/estimates/${id}/invoices`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: inv.kind, action: "in_person" }) });
+    const j = await r.json().catch(() => ({}));
+    setState(r.ok ? "done" : j.error ?? "That didn't work. Try again.");
+  }
+  if (state === "done") return <p className="mt-1 text-sm font-semibold text-brand">Marked paid.</p>;
+  return (
+    <>
+      <button onClick={go} disabled={state === "busy"} className="mt-1 self-start text-sm font-semibold text-brand underline">
+        {state === "busy" ? "Saving…" : `Mark ${what} paid`}
+      </button>
+      {state && state !== "busy" && <p className="text-sm text-bad">{state}</p>}
+    </>
+  );
+}
+
+function invoiceStep(id: string, inv: InvoiceInfo, accepted: boolean, name: string | undefined, phone: string | undefined) {
   const label = `${inv.kind === "deposit" ? "Deposit" : "Balance"} ${money(inv.totalCents)}`;
   const sms = phone && inv.payLink
     ? `sms:${phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${name?.split(" ")[0] ?? ""}, here's your ${inv.kind} invoice: ${inv.payLink}`)}`
     : null;
   const link = sms && <a href={sms} className="mt-1 text-sm font-semibold text-brand underline">Text the pay link</a>;
   switch (inv.status) {
-    case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}</Step>;
+    case "sent": return <Step key={inv.kind} state="now" title={`${label} · waiting for payment`} sub={`Invoice emailed${inv.updatedAt ? ` ${fmtWhen(inv.updatedAt)}` : ""}`}>{link}<MarkPaid id={id} inv={inv} /></Step>;
     case "paid_in_person": return <Step key={inv.kind} state="done" title={`${label} · paid in person`} />;
     case "paid": return <Step key={inv.kind} state="done" title={`${label} · paid`} sub={inv.paidAt ? `Clover shows it paid · ${fmtWhen(inv.paidAt)}` : "Clover shows it paid"} />;
     case "approved": case "sending": return <Step key={inv.kind} state="now" title={label} sub="Putting the invoice into Clover…" />;
-    case "failed": return <Step key={inv.kind} state="bad" title={`${label} · didn't go through`} sub={inv.error ?? "Clover didn't take it. Nothing was sent. Tap Try again below."} />;
+    case "failed": return <Step key={inv.kind} state="bad" title={`${label} · didn't go through`} sub={inv.error ?? "Clover didn't take it. Nothing was sent. Tap Try again below."}><MarkPaid id={id} inv={inv} /></Step>;
     default: return <Step key={inv.kind} state="todo" title={label}
-      sub={inv.kind === "deposit" ? (accepted ? "Ready to send" : "Send now, or once they accept") : "Send it when the job is done"} />;
+      sub={inv.kind === "deposit" ? (accepted ? "Ready to send" : "Send now, or once they accept") : "Send it when the job is done"}><MarkPaid id={id} inv={inv} /></Step>;
   }
 }
 
@@ -222,7 +245,7 @@ export function StatusBody({ id, data }: { id: string; data: StatusData }) {
           : <Step state="now" title="Waiting for the customer to accept" sub="Checked every few minutes" />}
         {invoices.map((inv) => (
           <div key={inv.kind}>
-            {invoiceStep(inv, !!data.acceptedAt, c?.name, c?.phone)}
+            {invoiceStep(id, inv, !!data.acceptedAt, c?.name, c?.phone)}
             {inv.kind === "deposit" && data.install && <InstallStep id={id} i={data.install} />}
           </div>
         ))}
@@ -249,19 +272,19 @@ export function StatusActions({ id, data, onRetry }: { id: string; data: StatusD
   if (!inv) return null;
   async function act(action: "send" | "in_person") {
     if (!inv) return;
-    if (action === "in_person" && !confirm(`Mark the ${money(inv.totalCents)} ${inv.kind} as collected in person? No invoice will be sent.`)) return;
+    if (action === "in_person" && !confirm(`Mark the ${money(inv.totalCents)} ${inv.kind} as paid (cash, check or card on the Clover device)? No invoice will be sent.`)) return;
     setBusy(true); setMsg("");
     const r = await fetch(`/api/estimates/${id}/invoices`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: inv.kind, action }) });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
-    setMsg(r.ok ? (action === "send" ? "On its way…" : "Marked as paid in person.") : j.error ?? "That didn't work. Try again.");
+    setMsg(r.ok ? (action === "send" ? "On its way…" : "Marked paid.") : j.error ?? "That didn't work. Try again.");
   }
   const sendLabel = inv.status === "failed" ? "Try again"
     : inv.kind === "deposit" ? (data.acceptedAt ? "Send deposit" : "Send deposit now") : "Send balance";
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2.5">
-        <button disabled={busy} onClick={() => act("in_person")} className={btnSecondary}>Paid in person</button>
+        <button disabled={busy} onClick={() => act("in_person")} className={btnSecondary}>{inv.kind === "deposit" ? "Deposit paid" : "Balance paid"}</button>
         <button disabled={busy} onClick={() => act("send")} className={btnPrimary}>{busy ? "Working…" : sendLabel}</button>
       </div>
       {msg && <p className="text-center text-[13px] text-muted">{msg}</p>}
