@@ -13,11 +13,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!(await ownsEstimate(s, id))) return Response.json({ error: "Not found" }, { status: 404 });
   const b = (await req.json().catch(() => ({}))) as { kind?: string; action?: string };
   if (!["deposit", "balance"].includes(b.kind ?? "")) return Response.json({ error: "Bad kind" }, { status: 400 });
-  const est = await db().query<{ accepted: boolean }>(
-    `SELECT accepted_at IS NOT NULL AS accepted FROM estimates WHERE id = $1 AND status = 'sent' AND coalesce(error,'') NOT LIKE 'dry run%'`, [id]);
+  const est = await db().query(`SELECT 1 FROM estimates WHERE id = $1 AND status = 'sent' AND coalesce(error,'') NOT LIKE 'dry run%'`, [id]);
   if (!est.rowCount) return Response.json({ error: "This estimate hasn't been sent to the customer yet" }, { status: 409 });
-  if (b.kind === "deposit" && !est.rows[0].accepted)
-    return Response.json({ error: "The customer hasn't accepted yet. If they said yes in person, tap Mark accepted first." }, { status: 409 });
   let sql: string;
   if (b.action === "send") sql = `UPDATE invoices SET status = 'approved', error = NULL, updated_at = now() WHERE estimate_id = $1 AND kind = $2 AND status IN ('waiting','failed')`;
   else if (b.action === "in_person") sql = `UPDATE invoices SET status = 'paid_in_person', error = NULL, updated_at = now() WHERE estimate_id = $1 AND kind = $2 AND status IN ('waiting','failed')`;
