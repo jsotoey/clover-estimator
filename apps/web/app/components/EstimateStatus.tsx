@@ -64,7 +64,7 @@ function invoiceStep(inv: InvoiceInfo, accepted: boolean, name: string | undefin
     case "approved": case "sending": return <Step key={inv.kind} state="now" title={label} sub="Putting the invoice into Clover…" />;
     case "failed": return <Step key={inv.kind} state="bad" title={`${label} · didn't go through`} sub={inv.error ?? "Clover didn't take it. Nothing was sent. Tap Try again below."} />;
     default: return <Step key={inv.kind} state="todo" title={label}
-      sub={inv.kind === "deposit" ? (accepted ? "Ready to send" : "Send now, or once they accept") : "Send it when the job is done"} />;
+      sub={inv.kind === "deposit" ? (accepted ? "Ready to send" : "Sends once they accept") : "Send it when the job is done"} />;
   }
 }
 
@@ -247,6 +247,14 @@ export function StatusActions({ id, data, onRetry }: { id: string; data: StatusD
     return <button onClick={onRetry} className={mayHaveSent(data.error) ? btnSecondary : btnDanger}>Try again</button>;
   const inv = nextInvoice(data);
   if (!inv) return null;
+  async function markAccepted() {
+    if (!confirm("Mark this estimate as accepted? Do this when the customer said yes in person or on the phone.")) return;
+    setBusy(true); setMsg("");
+    const r = await fetch(`/api/estimates/${id}/accept`, { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    setMsg(r.ok ? "Marked as accepted. You can send the deposit now." : j.error ?? "That didn't work. Try again.");
+  }
   async function act(action: "send" | "in_person") {
     if (!inv) return;
     if (action === "in_person" && !confirm(`Mark the ${money(inv.totalCents)} ${inv.kind} as collected in person? No invoice will be sent.`)) return;
@@ -256,14 +264,17 @@ export function StatusActions({ id, data, onRetry }: { id: string; data: StatusD
     setBusy(false);
     setMsg(r.ok ? (action === "send" ? "On its way…" : "Marked as paid in person.") : j.error ?? "That didn't work. Try again.");
   }
-  const sendLabel = inv.status === "failed" ? "Try again"
-    : inv.kind === "deposit" ? (data.acceptedAt ? "Send deposit" : "Send deposit now") : "Send balance";
+  const sendLabel = inv.status === "failed" ? "Try again" : inv.kind === "deposit" ? "Send deposit" : "Send balance";
+  // Money moves only after the customer says yes: in Clover's email, or marked here by the shop.
+  const locked = inv.kind === "deposit" && !data.acceptedAt && inv.status !== "failed";
   return (
     <div className="flex flex-col gap-2">
+      {locked && <p className="text-center text-[13px] text-muted">Unlocks when the customer accepts the estimate.</p>}
       <div className="grid grid-cols-2 gap-2.5">
-        <button disabled={busy} onClick={() => act("in_person")} className={btnSecondary}>Paid in person</button>
-        <button disabled={busy} onClick={() => act("send")} className={btnPrimary}>{busy ? "Working…" : sendLabel}</button>
+        <button disabled={busy || locked} onClick={() => act("in_person")} className={`${btnSecondary} disabled:opacity-40`}>Paid in person</button>
+        <button disabled={busy || locked} onClick={() => act("send")} className={`${btnPrimary} disabled:opacity-40`}>{busy ? "Working…" : sendLabel}</button>
       </div>
+      {locked && <button disabled={busy} onClick={markAccepted} className="text-center text-sm font-semibold text-brand underline">They said yes in person? Mark accepted</button>}
       {msg && <p className="text-center text-[13px] text-muted">{msg}</p>}
     </div>
   );
