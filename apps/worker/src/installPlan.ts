@@ -1,4 +1,4 @@
-import { EstimateSchema, earliestInstall, pickCrew, weekOf, type CrewInfo } from "@ce/core";
+import { EstimateSchema, earliestInstall, installDate, pickCrew, weekOf, type CrewInfo } from "@ce/core";
 import { db, logEvent } from "./db";
 
 /**
@@ -9,7 +9,7 @@ import { db, logEvent } from "./db";
 export async function planInstall(estimateId: string, paidAt: Date): Promise<void> {
   const { rows } = await db().query<{
     merchant_id: number; book_installs: boolean; lead_days: number; buffer_days: number;
-    supplier_lead: number | null; estimate: { line_items?: { description?: string }[]; note?: string } | null; tz: string;
+    supplier_lead: number | null; estimate: { line_items?: { description?: string }[]; note?: string; service_date?: string } | null; tz: string;
   }>(
     `SELECT e.merchant_id, m.book_installs, m.lead_days, m.buffer_days, s.lead_days AS supplier_lead, e.estimate, 'America/New_York' AS tz
      FROM estimates e JOIN merchants m ON m.id = e.merchant_id LEFT JOIN suppliers s ON s.id = e.supplier_id
@@ -19,10 +19,12 @@ export async function planInstall(estimateId: string, paidAt: Date): Promise<voi
   if (!r || !r.book_installs) return;
   const paidOn = new Intl.DateTimeFormat("en-CA", { timeZone: r.tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(paidAt);
   const earliest = earliestInstall(paidOn, r.supplier_lead ?? r.lead_days, r.buffer_days);
+  // Keep the start date the customer agreed to on the estimate, unless materials can't be in by then.
+  const { date, moved } = installDate(r.estimate?.service_date, earliest);
 
   const crews = (await db().query<CrewInfo>(`SELECT id, name, skills FROM crews WHERE merchant_id = $1 AND active ORDER BY id`, [r.merchant_id])).rows;
   const load = new Map<number, number>();
-  const week = weekOf(earliest);
+  const week = weekOf(date);
   for (const c of (await db().query<{ crew_id: number; n: string }>(
     `SELECT crew_id, count(*) AS n FROM installs WHERE merchant_id = $1 AND crew_id IS NOT NULL
        AND install_date BETWEEN $2::date AND ($2::date + 6) AND status NOT IN ('cancelled','failed') GROUP BY crew_id`, [r.merchant_id, week]
@@ -32,10 +34,12 @@ export async function planInstall(estimateId: string, paidAt: Date): Promise<voi
 
   const ins = await db().query(
     `INSERT INTO installs (estimate_id, merchant_id, crew_id, install_date, earliest_date, status, materials)
-     VALUES ($1, $2, $3, $4, $4, 'to_book', $5) ON CONFLICT (estimate_id) DO NOTHING`,
-    [estimateId, r.merchant_id, crew?.id ?? null, earliest, (r.supplier_lead ?? r.lead_days) > 0 ? "ordered" : "none"]
+     VALUES ($1, $2, $3, $4, $5, 'to_book', $6) ON CONFLICT (estimate_id) DO NOTHING`,
+    [estimateId, r.merchant_id, crew?.id ?? null, date, earliest, (r.supplier_lead ?? r.lead_days) > 0 ? "ordered" : "none"]
   );
-  if (ins.rowCount) await logEvent(estimateId, "install_planned", { date: earliest, crew: crew?.name ?? null });
+  if (ins.rowCount) await logEvent(estimateId, "install_planned", {
+    date, earliest, agreed: r.estimate?.service_date ?? null, moved, crew: crew?.name ?? null,
+  });
 }
 
 // ---------------------------------------------------------------------------------------------

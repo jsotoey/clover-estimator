@@ -35,3 +35,19 @@ describe("crew pick", () => {
   });
   it("no crews -> null", () => expect(pickCrew([], "x", new Map())).toBeNull());
 });
+
+import { installDate } from "../src/installs";
+describe("installDate", () => {
+  it("keeps the agreed start date when materials can be in by then", () => {
+    expect(installDate("2026-12-21", "2026-12-16")).toEqual({ date: "2026-12-21", moved: false });
+  });
+  it("moves to the earliest date when the agreed date is too soon", () => {
+    expect(installDate("2026-11-25", "2026-12-16")).toEqual({ date: "2026-12-16", moved: true });
+  });
+  it("a weekend start date moves to Monday", () => {
+    expect(installDate("2026-12-19", "2026-12-16")).toEqual({ date: "2026-12-21", moved: false });
+  });
+  it("no start date: earliest", () => {
+    expect(installDate(undefined, "2026-12-16")).toEqual({ date: "2026-12-16", moved: false });
+  });
+});

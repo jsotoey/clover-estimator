@@ -22,6 +22,17 @@ export function earliestInstall(paidOn: string, leadDays: number, bufferDays: nu
   return nextWeekday(addDays(paidOn, Math.max(0, leadDays) + Math.max(0, bufferDays)));
 }
 
+/**
+ * The install date: the start date the customer agreed to on the estimate, when materials can be in by
+ * then (on or after the earliest date). If that date is too soon, or there isn't one, the earliest date.
+ * A weekend start date moves to the next weekday. `moved` says the agreed date couldn't be kept.
+ */
+export function installDate(agreed: string | null | undefined, earliest: string): { date: string; moved: boolean } {
+  if (!agreed || !/^\d{4}-\d{2}-\d{2}$/.test(agreed)) return { date: earliest, moved: false };
+  const day = nextWeekday(agreed);
+  return day >= earliest ? { date: day, moved: false } : { date: earliest, moved: true };
+}
+
 /** Monday of the week a date falls in. */
 export function weekOf(ymd: string): string {
   const dow = new Date(`${ymd}T12:00:00Z`).getUTCDay();
