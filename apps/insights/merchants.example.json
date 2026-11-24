@@ -1,0 +1,10 @@
+[
+  {
+    "id": "CLOVER_MERCHANT_ID",
+    "name": "Business name as the owner says it",
+    "contactName": "Owner first name",
+    "email": "owner@example.com",
+    "timezone": "America/New_York",
+    "tokenEnv": "CLOVER_TOKEN_BUSINESS"
+  }
+]

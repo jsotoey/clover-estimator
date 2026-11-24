@@ -1,0 +1,113 @@
+import { bookingSettings, visitNote, zonedClock, zonedDate } from "@ce/core";
+import { config } from "./config";
+import { db, logEvent } from "./db";
+import { newPage, useStore } from "./browser";
+import { signedIn, storeById } from "./stores";
+import { checkSession, assertRightStore } from "./clover/session";
+import { requestLogin } from "./liveLogin";
+import { bookAppointment } from "./clover/appointments";
+import { FillError } from "./clover/fillEstimate";
+
+/** Best guess of the state from a ZIP (the booking page only asks for town + ZIP). */
+export function stateForZip(zip: string): string {
+  const n = Number(zip.slice(0, 3));
+  if (n >= 70 && n <= 89) return "NJ";
+  if (n >= 100 && n <= 149) return "NY";
+  if (n >= 60 && n <= 69) return "CT";
+  if (n >= 150 && n <= 196) return "PA";
+  return "NJ";
+}
+
+/**
+ * Put one online booking on the store's Clover calendar: the visit service, with the store's visit
+ * employee (e.g. "Estimator"), at the time the customer picked, address and job in the notes.
+ */
+export async function processBooking(allowedToSend: (raw: unknown) => boolean): Promise<boolean> {
+  // A visit stuck in "booking" means the worker stopped mid-way (Mac asleep, app closed). Save may or
+  // may not have gone through, so don't retry on our own: flag it so the shop checks Clover first.
+  await db().query(
+    `UPDATE bookings SET status = 'failed', updated_at = now(),
+       error = 'The worker stopped while adding this to Clover. Check the Clover calendar: if it is not there, tap Try again.'
+     WHERE status = 'booking' AND updated_at < now() - interval '10 minutes'`);
+  const { rows } = await db().query<{
+    id: string; merchant_id: number; starts_at: Date; booking: unknown; first_name: string; last_name: string;
+    email: string; phone: string; street: string; unit: string | null; city: string; zip: string;
+    project_type: string; details: string; photos: string; text_consent: boolean;
+  }>(
+    `UPDATE bookings b SET status = 'booking', updated_at = now()
+     FROM merchants m
+     WHERE m.id = b.merchant_id
+       AND b.id = (SELECT id FROM bookings WHERE status = 'to_book' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)
+     RETURNING b.*, m.booking, (SELECT count(*) FROM files f WHERE f.booking_id = b.id) AS photos`
+  );
+  const job = rows[0];
+  if (!job) return false;
+  const fail = (msg: string) => db().query(`UPDATE bookings SET status = 'failed', error = $2, updated_at = now() WHERE id = $1`, [job.id, msg]);
+  const store = await storeById(job.merchant_id);
+  if (!store) { await fail("Store not found"); return true; }
+  if (signedIn.get(store.id) === false) {
+    // Waiting for someone to sign this store in to Clover; don't keep loading Clover's login page,
+    // but make sure the app is asking for that sign-in (requestLogin reuses an open request).
+    await db().query(`UPDATE bookings SET status = 'to_book', error = 'Waiting for someone to sign in to Clover in the app' WHERE id = $1`, [job.id]);
+    await requestLogin("booking", store.id);
+    return false;
+  }
+  const s = bookingSettings(job.booking);
+
+  const start = new Date(job.starts_at).getTime();
+  const req = {
+    firstName: job.first_name, lastName: job.last_name, email: job.email, phone: job.phone,
+    street: job.street, unit: job.unit ?? undefined, city: job.city, zip: job.zip,
+    projectType: job.project_type, details: job.details, start: new Date(start).toISOString(),
+  };
+  const customer = {
+    name: `${job.first_name} ${job.last_name}`.trim(),
+    email: job.email,
+    phone: job.phone,
+    job_address: `${job.street}${job.unit ? ` ${job.unit}` : ""}, ${job.city}, ${stateForZip(job.zip)} ${job.zip}`,
+  };
+
+  await useStore(store);
+  const page = await newPage();
+  // Clover can email the customer about the appointment, so the test lock applies.
+  const locked = !config.dryRun && !allowedToSend({ customer });
+  try {
+    if (!(await checkSession(page))) {
+      await db().query(`UPDATE bookings SET status = 'to_book', updated_at = now() WHERE id = $1`, [job.id]);
+      signedIn.set(store.id, false);
+      await requestLogin("booking", store.id);
+      return true;
+    }
+    await assertRightStore(page);
+    // Watchdog: nothing in here may hold the worker for more than 4 minutes. Closing the page
+    // makes any stuck browser call fail, so the loop always moves on.
+    let lastStep = "start";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        page.close().catch(() => {});
+        reject(new FillError(`The bot got stuck in Clover (last step: ${lastStep}). ${/save/.test(lastStep) ? "It may have saved: check the Clover calendar before tapping Try again." : "Nothing was booked."}`));
+      }, 4 * 60_000);
+    });
+    const res = await Promise.race([watchdog, bookAppointment(page, { customer }, {
+      date: zonedDate(start, s.timeZone), time: zonedClock(start, s.timeZone),
+      service: s.service, employee: s.employee, note: visitNote(req, Number(job.photos)),
+    }, {
+      dryRun: config.dryRun || locked,
+      textConsent: job.text_consent, // agreed on the booking page
+      onStep: async (step, url) => { lastStep = step; await logEvent(null, "booking_step", { booking: job.id, step, screenshot: url || null }); },
+    })]).finally(() => clearTimeout(timer));
+    await db().query(`UPDATE bookings SET status = $2, error = $3, updated_at = now() WHERE id = $1`, [
+      job.id, res.booked ? "booked" : "test_run",
+      res.booked ? null : locked ? "Not added: this customer isn't on your test list (SEND_ONLY_TO). The form was filled in but not saved. Tap Try again after allowing them." : "Not added: the worker is in test mode (DRY_RUN). The form was filled in but not saved.",
+    ]);
+    await logEvent(null, res.booked ? "visit_booked" : "visit_test_run", { booking: job.id, store: store.slug });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await logEvent(null, "visit_failed", { booking: job.id, error: msg, screenshot: (e as { screenshot?: string }).screenshot ?? null });
+    await fail(e instanceof FillError ? msg : "Something went wrong putting the visit on the Clover calendar. Nothing was booked there yet.");
+  } finally {
+    await page.close().catch(() => {});
+  }
+  return true;
+}
