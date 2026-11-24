@@ -97,6 +97,7 @@ export default function VisitsList({ businessName }: { businessName: string }) {
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {(v.status === "failed" || v.status === "test_run") && <button className={`${btnSecondary} col-span-2`} onClick={() => act(v.id, "retry")}>Try again</button>}
+            {v.status !== "cancelled" && <a className={`${btnPrimary} col-span-2 text-center`} href={`/?visit=${v.id}`}>Start estimate</a>}
             {v.status !== "cancelled" && v.status !== "booking" && <>
               <button className={btnSecondary} onClick={() => setMoving(v.id)}>Reschedule</button>
               <button className={btnSecondary} onClick={() => act(v.id, "cancel")}>Cancel visit</button>

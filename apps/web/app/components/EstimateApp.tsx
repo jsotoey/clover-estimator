@@ -65,9 +65,23 @@ export default function EstimateApp({ businessName, taxRate, admin }: { business
   }, [estimateId, status]);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).get("recent")) {
+    const q = new URLSearchParams(location.search);
+    if (q.get("recent")) {
       history.replaceState(null, "", "/");
       void showList();
+    }
+    // "Start estimate" from a visit: fill in who, where and what they told us, then the tech adds the rest.
+    const visit = q.get("visit");
+    if (visit) {
+      history.replaceState(null, "", "/");
+      void (async () => {
+        const r = await fetch("/api/bookings", { cache: "no-store" }).catch(() => null);
+        const v = r?.ok ? ((await r.json()).bookings as Array<Record<string, string | null>>).find((b) => b.id === visit) : null;
+        if (!v) return;
+        const addr = `${v.street}${v.unit ? `, ${v.unit}` : ""}, ${v.city}, NJ ${v.zip}`;
+        setInput(`Estimate for ${v.first_name} ${v.last_name}, ${v.phone}, ${v.email}, ${addr}. Project: ${v.project_type}. What they told us when booking: ${v.details}\n\nWhat I measured and want to quote: `);
+        inputRef.current?.focus();
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
