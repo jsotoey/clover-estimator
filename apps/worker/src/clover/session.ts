@@ -29,6 +29,18 @@ export async function prefillCredentials(page: Page): Promise<void> {
 
 const norm = (t: string) => t.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
 
+/** True when the Clover page shows this store's name (false = some other store's login; null = couldn't tell). */
+export async function storeShown(page: Page): Promise<boolean | null> {
+  const want = norm(activeStore().cloverName);
+  if (!want) return null;
+  for (let i = 0; i < 6; i++) {
+    const text = norm(await page.locator("body").innerText({ timeout: 2000 }).catch(() => ""));
+    if (text.includes(want)) return true;
+    await page.waitForTimeout(800);
+  }
+  return false;
+}
+
 /**
  * Store guard: before filling anything in, make sure the Clover dashboard is showing the store this
  * estimate belongs to (its name sits at the top of every Clover page). For any store but the first,

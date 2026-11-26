@@ -109,6 +109,21 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS booking_id uuid REFERENCES bookings(i
 -- The customer agreed (on the booking page) to texts/emails about the appointment. Clover won't save an
 -- appointment for a customer with a phone until that consent is confirmed, so the bot confirms only when true.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS text_consent boolean NOT NULL DEFAULT false;
+
+-- Who signs in where (Nov 26). The Clover login the bot uses for each store, whether the bot works that
+-- store at all, and what the bot last saw there, so the app can say plainly what needs a sign-in.
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS bot_email text;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS bot_paused boolean NOT NULL DEFAULT false;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS clover_signed_in boolean;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS clover_store_ok boolean;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS clover_checked_at timestamptz;
+-- One row: when the bot computer last checked in, so the app can tell "bot is off" from "Clover signed out".
+CREATE TABLE IF NOT EXISTS worker_heartbeat (
+  id       integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  seen_at  timestamptz NOT NULL DEFAULT now(),
+  version  text,
+  store    text
+);
 `;
 
 /** Rows created before multi-store support belong to the first store. */

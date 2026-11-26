@@ -1,7 +1,7 @@
 import { config } from "./config";
 import { newPage, saveSession, useStore } from "./browser";
-import { checkSession, assertRightStore } from "./clover/session";
-import { loadStores, signedIn, storeById } from "./stores";
+import { checkSession, assertRightStore, storeShown } from "./clover/session";
+import { heartbeat, loadStores, recordCloverState, signedIn, storeById } from "./stores";
 import { processInstall, planMissingInstalls } from "./installPlan";
 import { processBooking } from "./bookings";
 import { runSetupTask } from "./scout";
@@ -57,6 +57,13 @@ async function handleLoginRequest(): Promise<boolean> {
   const ok = await runLiveLogin(req.id);
   if (ok) {
     signedIn.set(store.id, true);
+    // Tell the app right away whether this login opens the right store.
+    const page = await newPage();
+    try {
+      const right = (await checkSession(page)) ? await storeShown(page) : null;
+      await recordCloverState(store.id, true, right);
+      if (right === false) console.warn(`[store guard] ${store.name}: this Clover login opens a different store.`);
+    } catch { /* the next keep-alive check fills it in */ } finally { await page.close().catch(() => {}); }
     await releaseWaitingEstimates(store.id);
   }
   return true;
@@ -182,6 +189,7 @@ async function main() {
   }, 60_000).unref();
   for (;;) {
     lastTick = Date.now();
+    await heartbeat(process.env.BUILD_SHA?.slice(0, 7));
     try {
       if (await newerVersionPublished()) {
         console.log("A newer version is available. Restarting to update...");
@@ -211,8 +219,10 @@ async function main() {
         try {
           const ok = await checkSession(page);
           signedIn.set(store.id, ok);
+          const right = ok ? await storeShown(page) : null;
+          await recordCloverState(store.id, ok, right);
           if (ok) await saveSession();
-          await logEvent(null, "keepalive", { store: store.slug, signedIn: ok });
+          await logEvent(null, "keepalive", { store: store.slug, signedIn: ok, rightStore: right });
         } finally {
           await page.close().catch(() => {});
         }

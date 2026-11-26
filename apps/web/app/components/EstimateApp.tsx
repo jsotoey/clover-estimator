@@ -1,4 +1,5 @@
 "use client";
+import { cloverHealth } from "@/lib/cloverHealth";
 import { useEffect, useRef, useState } from "react";
 import type { Estimate, PricingResult } from "@ce/core";
 import { CLOVER_LIMITS } from "@ce/core";
@@ -43,7 +44,7 @@ export default function EstimateApp({ businessName, taxRate, admin, start = "cha
       const r = await fetch("/api/clover-login", { cache: "no-store" }).catch(() => null);
       if (!r?.ok) return;
       const j = await r.json();
-      setClover(j.waitingEstimates > 0 || j.current?.status !== "done" ? (j.current ? "off" : "unknown") : "on");
+      setClover(cloverHealth(j).state);
     };
     check();
     const t = setInterval(check, 30000);

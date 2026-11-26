@@ -4,6 +4,7 @@ import { TopBar, BottomNav, ConnectionPill, SectionLabel, Avatar, card, heroCard
 import StoreSwitcher from "./StoreSwitcher";
 import { describe, type RecentItem } from "./EstimateList";
 import { initials } from "@/lib/stage";
+import { cloverHealth } from "@/lib/cloverHealth";
 
 const TZ = "America/New_York";
 interface Visit { id: string; starts_at: string; minutes: number; first_name: string; last_name: string; phone: string; street: string; city: string; zip: string; project_type: string; status: string }
@@ -29,6 +30,7 @@ export default function TodayView({ businessName, admin }: { businessName: strin
   const [installs, setInstalls] = useState<Install[]>([]);
   const [estimates, setEstimates] = useState<RecentItem[] | null>(null);
   const [clover, setClover] = useState<"on" | "off" | "unknown">("unknown");
+  const [alert, setAlert] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -40,7 +42,12 @@ export default function TodayView({ businessName, admin }: { businessName: strin
       if (b?.status === 401 || e?.status === 401) return location.reload();
       if (b?.ok) { const j = await b.json(); setVisits(j.bookings); setInstalls(j.installs ?? []); }
       if (e?.ok) setEstimates((await e.json()).estimates);
-      if (c?.ok) { const j = await c.json(); setClover(j.waitingEstimates > 0 || j.current?.status !== "done" ? (j.current ? "off" : "unknown") : "on"); }
+      if (c?.ok) {
+        const j = await c.json();
+        const h = cloverHealth(j);
+        setAlert(h.problem);
+        setClover(h.state);
+      }
     };
     load();
     const t = setInterval(load, 30_000);
@@ -88,6 +95,14 @@ export default function TodayView({ businessName, admin }: { businessName: strin
       <TopBar title={hello} business={<StoreSwitcher name={businessName} admin={admin} />} right={<ConnectionPill state={clover} />} />
       <div className="flex flex-1 flex-col gap-5 px-4 pb-6 pt-1">
         <p className="-mt-2 text-[15px] text-muted">{dateLine}</p>
+
+        {alert && (
+          <a href="/clover" role="alert" className="flex items-center gap-3 rounded-[20px] bg-bad-soft px-4 py-3.5 text-bad">
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+            <span className="flex-1 text-[14px] font-semibold leading-snug">{alert}</span>
+            <span className="shrink-0 text-[13px] font-bold underline">Fix</span>
+          </a>
+        )}
 
         <div className="grid grid-cols-3 gap-2.5">
           {[

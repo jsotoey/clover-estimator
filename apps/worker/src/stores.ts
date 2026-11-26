@@ -17,7 +17,7 @@ let cache: { at: number; stores: Store[] } | null = null;
 export async function loadStores(force = false): Promise<Store[]> {
   if (!force && cache && Date.now() - cache.at < 30_000) return cache.stores;
   const { rows } = await db().query<{ id: number; slug: string; name: string; clover_name: string | null; tax_rate: string; primary_id: number }>(
-    `SELECT id, slug, name, clover_name, tax_rate, (SELECT min(id) FROM merchants) AS primary_id FROM merchants WHERE active ORDER BY id`
+    `SELECT id, slug, name, clover_name, tax_rate, (SELECT min(id) FROM merchants) AS primary_id FROM merchants WHERE active AND NOT bot_paused ORDER BY id`
   ).catch(() => ({ rows: [] as never[] }));
   const stores = rows.map((r) => {
     const primary = r.id === r.primary_id;
@@ -46,5 +46,27 @@ export function activeStore(): Store {
 export function setActiveStore(s: Store) { active = s; }
 export function activeStoreOrNull(): Store | null { return active; }
 
-/** Last known Clover sign-in state per store (undefined = not checked yet). */
-export const signedIn = new Map<number, boolean>();
+/** Last known Clover sign-in state per store (undefined = not checked yet). Also saved for the app's Clover screen. */
+class SignedIn extends Map<number, boolean> {
+  set(id: number, ok: boolean) {
+    if (this.get(id) !== ok || !ok)
+      db().query(`UPDATE merchants SET clover_signed_in = $2, clover_checked_at = now() WHERE id = $1`, [id, ok]).catch(() => {});
+    return super.set(id, ok);
+  }
+}
+export const signedIn = new SignedIn();
+
+/** Tell the app the bot computer is alive (at most every 30 seconds). */
+let beatAt = 0;
+export async function heartbeat(version: string | undefined) {
+  if (Date.now() - beatAt < 30_000) return;
+  beatAt = Date.now();
+  await db().query(
+    `INSERT INTO worker_heartbeat (id, seen_at, version, store) VALUES (1, now(), $1, $2)
+     ON CONFLICT (id) DO UPDATE SET seen_at = now(), version = $1, store = $2`,
+    [version ?? null, active?.slug ?? null]).catch(() => {});
+}
+/** Record what the bot saw in a store's Clover: signed in, and whether it was the right store. */
+export async function recordCloverState(id: number, ok: boolean, storeOk: boolean | null) {
+  await db().query(`UPDATE merchants SET clover_signed_in = $2, clover_store_ok = $3, clover_checked_at = now() WHERE id = $1`, [id, ok, storeOk]).catch(() => {});
+}

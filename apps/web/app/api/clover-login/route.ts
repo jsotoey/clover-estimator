@@ -18,7 +18,26 @@ export async function GET() {
     [s.merchant.id]
   );
   const waiting = await db().query<{ n: string }>(`SELECT count(*) AS n FROM estimates WHERE status = 'needs_login' AND merchant_id = $1`, [s.merchant.id]);
-  return Response.json({ current: current.rows[0] ?? null, history: history.rows, waitingEstimates: Number(waiting.rows[0].n) });
+  // Who's who: the bot computer, and the Clover login it uses for this store.
+  const m = await db().query(
+    `SELECT name, clover_name, to_jsonb(m) ->> 'bot_email' AS bot_email,
+            COALESCE((to_jsonb(m) ->> 'bot_paused')::boolean, false) AS bot_paused,
+            (to_jsonb(m) ->> 'clover_signed_in')::boolean AS signed_in,
+            (to_jsonb(m) ->> 'clover_store_ok')::boolean AS store_ok,
+            to_jsonb(m) ->> 'clover_checked_at' AS checked_at
+     FROM merchants m WHERE id = $1`, [s.merchant.id]);
+  const beat = await db().query<{ seen_at: string; store: string | null }>(`SELECT seen_at, store FROM worker_heartbeat WHERE id = 1`).catch(() => ({ rows: [] as { seen_at: string; store: string | null }[] }));
+  const seen = beat.rows[0]?.seen_at ?? null;
+  // While a sign-in is open the bot is busy with it and doesn't check in, but it's running.
+  const online = current.rows[0]?.status === "active" || (!!seen && Date.now() - new Date(seen).getTime() < 6 * 60_000);
+  return Response.json({
+    current: current.rows[0] ?? null, history: history.rows, waitingEstimates: Number(waiting.rows[0].n),
+    bot: { online, seenAt: seen, known: !!seen },
+    store: m.rows[0] ? {
+      name: m.rows[0].name, cloverName: m.rows[0].clover_name, botEmail: m.rows[0].bot_email, paused: m.rows[0].bot_paused,
+      signedIn: m.rows[0].signed_in, storeOk: m.rows[0].store_ok, checkedAt: m.rows[0].checked_at,
+    } : null,
+  });
 }
 
 /** Start a sign-in (reuses one already open). */
